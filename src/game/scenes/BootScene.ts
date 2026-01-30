@@ -42,14 +42,15 @@ export class BootScene extends Phaser.Scene {
             console.error("Phaser load error in file:", file.src);
         });
 
-        // Assets
-        this.load.image("background", "/1.png?v5=" + Date.now());
-        this.load.image("ship", "/mark 1.svg?v2=" + Date.now());
-        this.load.spritesheet("bat", "/bat.png", {
+        // Assets - Using static version to encourage caching
+        const version = "1.0.1";
+        this.load.image("background", "/1.png?v=" + version);
+        this.load.image("ship", "/mark 1.svg?v=" + version);
+        this.load.spritesheet("bat", "/bat.png?v=" + version, {
             frameWidth: 317,
             frameHeight: 319
         });
-        this.load.image("projectile", "/projectile.png?v2=" + Date.now());
+        this.load.image("projectile", "/projectile.png?v=" + version);
     }
 
     create() {

@@ -20,6 +20,7 @@ export class PlayScene extends Phaser.Scene {
     private scoreText!: Phaser.GameObjects.Text;
     private fireKey!: Phaser.Input.Keyboard.Key;
     private lastFired: number = 0;
+    private lastTrailSpawn: number = 0;
 
     constructor() {
         super("Play");
@@ -118,9 +119,6 @@ export class PlayScene extends Phaser.Scene {
             this.ship.setScale(0.1);
         }
 
-        this.ship.setDamping(true);
-        this.ship.setDrag(0.6);
-        this.ship.setMaxVelocity(220);
         this.ship.setCollideWorldBounds(true);
         if (this.ship.body) {
             (this.ship.body as Phaser.Physics.Arcade.Body).setSize(this.ship.width * 0.4, this.ship.height * 0.4);
@@ -319,17 +317,45 @@ export class PlayScene extends Phaser.Scene {
         if (cursors) {
             const body = this.ship.body as Phaser.Physics.Arcade.Body;
             const speed = 420;
-            const accel = new Phaser.Math.Vector2(0, 0);
-            if (cursors.left.isDown) accel.x = -speed;
-            else if (cursors.right.isDown) accel.x = speed;
-            if (cursors.up.isDown) accel.y = -speed;
-            else if (cursors.down.isDown) accel.y = speed;
-            if (accel.length() > 0) {
-                accel.normalize().scale(speed);
-                body.setAcceleration(accel.x, accel.y);
-            } else {
-                body.setAcceleration(0, 0);
+            const vel = new Phaser.Math.Vector2(0, 0);
+
+            if (cursors.left.isDown) vel.x = -speed;
+            else if (cursors.right.isDown) vel.x = speed;
+
+            if (cursors.up.isDown) vel.y = -speed;
+            else if (cursors.down.isDown) vel.y = speed;
+
+            if (vel.length() > 0) {
+                vel.normalize().scale(speed);
+
+                // Wind/Trail Effect
+                if (time > this.lastTrailSpawn + 20) { // Slightly more frequent
+                    const trail = this.add.image(this.ship.x, this.ship.y, "ship")
+                        .setScale(this.ship.scaleX, this.ship.scaleY)
+                        .setAlpha(0.24)
+                        .setDepth(9); // Ensure it's above BG (0) and highlight (0.5)
+
+                    // Stretch in opposite direction of movement
+                    const targetX = this.ship.x - vel.x * 0.1;
+                    const targetY = this.ship.y - vel.y * 0.1;
+                    const targetScaleX = vel.x !== 0 ? this.ship.scaleX * 1.5 : this.ship.scaleX;
+                    const targetScaleY = vel.y !== 0 ? this.ship.scaleY * 1.5 : this.ship.scaleY;
+
+                    this.tweens.add({
+                        targets: trail,
+                        alpha: 0,
+                        x: targetX,
+                        y: targetY,
+                        scaleX: targetScaleX,
+                        scaleY: targetScaleY,
+                        duration: 200,
+                        onComplete: () => trail.destroy()
+                    });
+                    this.lastTrailSpawn = time;
+                }
             }
+            body.setVelocity(vel.x, vel.y);
+            this.ship.setDepth(10); // Ensure ship is always on top of trails
         }
         this.ship.setRotation(0);
 
