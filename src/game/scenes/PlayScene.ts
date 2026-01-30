@@ -33,22 +33,25 @@ export class PlayScene extends Phaser.Scene {
         this.lastFired = 0;
 
         this.bg = this.add
-            .tileSprite(0, 0, this.scale.width, this.scale.height, "background")
+            .tileSprite(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, "background")
             .setOrigin(0);
 
         // Highlight layer for "Cloud Flash" (same texture, ADD blend)
         this.bgHighlight = this.add
-            .tileSprite(0, 0, this.scale.width, this.scale.height, "background")
+            .tileSprite(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, "background")
             .setOrigin(0)
             .setAlpha(0)
             .setDepth(0.5) // Just above BG
             .setBlendMode(Phaser.BlendModes.ADD);
 
         // Scale texture to fit width
-        const tex = this.textures.get("background").getSourceImage();
-        const scale = DESIGN_WIDTH / tex.width;
-        this.bg.setTileScale(scale);
-        this.bgHighlight.setTileScale(scale);
+        const bgTexture = this.textures.get("background");
+        if (bgTexture && bgTexture.key !== "__MISSING") {
+            const tex = bgTexture.getSourceImage();
+            const scale = DESIGN_WIDTH / tex.width;
+            this.bg.setTileScale(scale);
+            this.bgHighlight.setTileScale(scale);
+        }
 
         // Lightning Flash Effect (Full Screen)
         const flash = this.add.rectangle(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, 0xffffff)
