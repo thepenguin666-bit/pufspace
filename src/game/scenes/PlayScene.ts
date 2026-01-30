@@ -14,6 +14,10 @@ export class PlayScene extends Phaser.Scene {
     private gameOverText!: Phaser.GameObjects.Text;
     private restartButton!: Phaser.GameObjects.Text;
     private isGameOver: boolean = false;
+    private isPaused: boolean = false;
+    private pauseOverlay!: Phaser.GameObjects.Rectangle;
+    private pauseText!: Phaser.GameObjects.Text;
+    private enterKey!: Phaser.Input.Keyboard.Key;
 
     // Shooting & Score
     private projectiles!: Phaser.Physics.Arcade.Group;
@@ -22,6 +26,16 @@ export class PlayScene extends Phaser.Scene {
     private fireKey!: Phaser.Input.Keyboard.Key;
     private lastFired: number = 0;
     private lastTrailSpawn: number = 0;
+    private stamina: number = 50;
+    private maxStamina: number = 50;
+    private staminaBarFrame!: Phaser.GameObjects.Image;
+    private staminaBarFill!: Phaser.GameObjects.Graphics;
+    private boosts!: Phaser.Physics.Arcade.Group;
+    private isBoostActive: boolean = false;
+    private boostTimer: number = 0;
+    private boostUIContainer!: Phaser.GameObjects.Container;
+    private boostUIBarFill!: Phaser.GameObjects.Graphics;
+    private maxBoostTime: number = 10000;
 
     constructor() {
         super("Play");
@@ -140,9 +154,13 @@ export class PlayScene extends Phaser.Scene {
             runChildUpdate: false
         });
 
+        // Boosts Group
+        this.boosts = this.physics.add.group();
+
         // Input
         if (this.input.keyboard) {
             this.fireKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
+            this.enterKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
         }
 
         // Spawn Swarm
@@ -210,6 +228,30 @@ export class PlayScene extends Phaser.Scene {
         };
         spawnGhost();
 
+        // Spawn Boost every 30s
+        this.time.addEvent({
+            delay: 30000,
+            loop: true,
+            callback: () => {
+                if (this.isGameOver) return;
+                const x = Phaser.Math.Between(50, DESIGN_WIDTH - 50);
+                const boost = this.boosts.create(x, -50, "boost") as Phaser.Physics.Arcade.Image;
+                boost.setScale(0.3); // Increased from 0.15
+                boost.setVelocityY(150);
+                boost.setDepth(8);
+
+                // Y-axis rotation effect using ScaleX tween
+                this.tweens.add({
+                    targets: boost,
+                    scaleX: -0.3, // Re-adjusted scale for tween
+                    duration: 500,
+                    yoyo: true,
+                    repeat: -1,
+                    ease: "Sine.easeInOut"
+                });
+            }
+        });
+
         // UI: Health
         this.healthText = this.add.text(20, 20, "HP: 3", {
             fontSize: "32px",
@@ -228,13 +270,23 @@ export class PlayScene extends Phaser.Scene {
             strokeThickness: 3
         }).setDepth(100);
 
+        // UI: Stamina Bar
+        const staminaScale = DESIGN_WIDTH / 5585;
+        const staminaHeight = 293 * staminaScale;
+
+        this.staminaBarFrame = this.add.image(DESIGN_WIDTH / 2, DESIGN_HEIGHT - staminaHeight / 2, "stamina")
+            .setScale(staminaScale)
+            .setDepth(101);
+
+        this.staminaBarFill = this.add.graphics().setDepth(102);
+
         // UI: Game Over
         this.gameOverText = this.add.text(DESIGN_WIDTH / 2, DESIGN_HEIGHT / 2 - 20, "GAME OVER", {
-            fontSize: "48px",
+            fontSize: "32px",
             fontFamily: '"Press Start 2P"',
             color: "#ff0000",
             stroke: "#ffffff",
-            strokeThickness: 6,
+            strokeThickness: 4,
             align: 'center'
         }).setOrigin(0.5).setDepth(100).setVisible(false);
 
@@ -251,6 +303,29 @@ export class PlayScene extends Phaser.Scene {
             .setInteractive({ useHandCursor: true })
             .on('pointerdown', () => this.scene.restart());
 
+        // UI: Pause Overlay
+        this.pauseOverlay = this.add.rectangle(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, 0x000000, 0.6)
+            .setOrigin(0)
+            .setDepth(200)
+            .setVisible(false);
+
+        this.pauseText = this.add.text(DESIGN_WIDTH / 2, DESIGN_HEIGHT / 2, "PAUSED", {
+            fontSize: "42px",
+            fontFamily: '"Press Start 2P"',
+            color: "#ffffff",
+            stroke: "#000000",
+            strokeThickness: 6
+        }).setOrigin(0.5).setDepth(201).setVisible(false);
+
+        // UI: Power-up Timer (Top Right)
+        this.boostUIContainer = this.add.container(DESIGN_WIDTH - 120, 40).setDepth(150).setVisible(false);
+
+        const uiIcon = this.add.image(-15, 0, "boost").setScale(0.1);
+        const uiBarBG = this.add.rectangle(10, 0, 80, 10, 0x000000, 0.5).setOrigin(0, 0.5);
+        this.boostUIBarFill = this.add.graphics();
+
+        this.boostUIContainer.add([uiIcon, uiBarBG, this.boostUIBarFill]);
+
         // Physics: Ship vs Bats/Ghosts
         this.physics.add.overlap(this.ship, this.bats, (obj1, obj2) => {
             this.handlePlayerHit(obj2 as Phaser.Physics.Arcade.Sprite);
@@ -265,6 +340,12 @@ export class PlayScene extends Phaser.Scene {
         });
         this.physics.add.overlap(this.projectiles, this.ghosts, (proj, ghost) => {
             this.handleProjectileHitBat(proj as Phaser.Physics.Arcade.Image, ghost as Phaser.Physics.Arcade.Sprite);
+        });
+
+        // Physics: Ship vs Boost
+        this.physics.add.overlap(this.ship, this.boosts, (ship, boost) => {
+            (boost as Phaser.Physics.Arcade.Image).destroy();
+            this.activateBoost();
         });
 
         const layout = () => {
@@ -324,13 +405,54 @@ export class PlayScene extends Phaser.Scene {
         this.restartButton.setVisible(true);
     }
 
+    activateBoost() {
+        this.isBoostActive = true;
+        this.boostTimer = this.maxBoostTime;
+        this.ship.setTint(0xadff2f); // Yellowish-green (Lime) indicator
+        this.boostUIContainer.setVisible(true);
+    }
+
     update(time: number, dt: number) {
-        if (this.isGameOver) return;
+        // Toggle Pause
+        if (Phaser.Input.Keyboard.JustDown(this.enterKey)) {
+            if (!this.isGameOver) {
+                this.isPaused = !this.isPaused;
+                if (this.isPaused) {
+                    this.physics.pause();
+                    this.pauseOverlay.setVisible(true);
+                    this.pauseText.setVisible(true);
+                } else {
+                    this.physics.resume();
+                    this.pauseOverlay.setVisible(false);
+                    this.pauseText.setVisible(false);
+                }
+            }
+        }
+
+        if (this.isGameOver || this.isPaused) return;
+
+        // Boost Timer
+        if (this.isBoostActive) {
+            this.boostTimer -= dt;
+
+            // Update UI Bar
+            this.boostUIBarFill.clear();
+            const fillW = Math.max(0, (this.boostTimer / this.maxBoostTime) * 80);
+            this.boostUIBarFill.fillStyle(0xadff2f, 1);
+            this.boostUIBarFill.fillRect(10, -5, fillW, 10);
+
+            if (this.boostTimer <= 0) {
+                this.isBoostActive = false;
+                this.ship.clearTint();
+                this.boostUIContainer.setVisible(false);
+            }
+        }
+
         const deltaY = this.ship.y - this.lastShipY;
         this.lastShipY = this.ship.y;
 
         if (this.fireKey && this.fireKey.isDown) {
-            if (time > this.lastFired) {
+            if (time > this.lastFired && this.stamina >= 1) {
                 const projectile = this.projectiles.create(this.ship.x, this.ship.y - this.ship.displayHeight / 2, 'projectile') as Phaser.Physics.Arcade.Image;
                 if (projectile) {
                     projectile.setVelocityY(-900);
@@ -338,7 +460,14 @@ export class PlayScene extends Phaser.Scene {
                     if (projectile.body) {
                         (projectile.body as Phaser.Physics.Arcade.Body).setSize(projectile.width * 0.5, projectile.height * 0.8);
                     }
-                    this.lastFired = time + 166.6;
+                    if (this.isBoostActive) {
+                        projectile.setTint(0xadff2f);
+                    }
+                    const fireRate = this.isBoostActive ? 100 : 166.6;
+                    this.lastFired = time + fireRate;
+                    if (!this.isBoostActive) {
+                        this.stamina = Math.max(0, this.stamina - 2);
+                    }
                 }
             }
         }
@@ -352,6 +481,33 @@ export class PlayScene extends Phaser.Scene {
         const baseSpeed = 1.35 * dt;
         this.bg.tilePositionY += deltaY - baseSpeed;
         this.bgHighlight.tilePositionY = this.bg.tilePositionY;
+
+        // Stamina Recovery: 5 units per second
+        const staminaRecovery = (5 * dt) / 1000;
+        if (this.isBoostActive) {
+            this.stamina = this.maxStamina;
+        } else {
+            this.stamina = Math.min(this.maxStamina, this.stamina + staminaRecovery);
+        }
+
+        // Draw Stamina Fill
+        this.staminaBarFill.clear();
+        const staminaScale = DESIGN_WIDTH / 5585;
+        const fillMaxW = 5413 * staminaScale;
+        const fillH = 217 * staminaScale;
+        const fillX = (86 * staminaScale) + (DESIGN_WIDTH / 2 - (5585 * staminaScale) / 2); // Absolute X
+        const fillY = (DESIGN_HEIGHT - 293 * staminaScale) + (38 * staminaScale);
+
+        // Draw Background (Dark)
+        this.staminaBarFill.fillStyle(0x000000, 0.5);
+        this.staminaBarFill.fillRect(fillX, fillY, fillMaxW, fillH);
+
+        const currentFillW = (this.stamina / this.maxStamina) * fillMaxW;
+
+        if (currentFillW > 0) {
+            this.staminaBarFill.fillStyle(0xFFF825, 1);
+            this.staminaBarFill.fillRect(fillX, fillY, currentFillW, fillH);
+        }
 
         const cursors = this.input.keyboard?.createCursorKeys();
         if (cursors) {
@@ -443,6 +599,13 @@ export class PlayScene extends Phaser.Scene {
 
                 child.setPosition(nextX, nextY);
             }
+        }
+
+        // Boost Cleanup
+        const bsts = this.boosts.getChildren();
+        for (let i = bsts.length - 1; i >= 0; i--) {
+            const child = bsts[i] as Phaser.Physics.Arcade.Image;
+            if (child.active && child.y > DESIGN_HEIGHT + 50) child.destroy();
         }
     }
 }

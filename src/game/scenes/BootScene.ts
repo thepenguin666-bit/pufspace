@@ -55,6 +55,8 @@ export class BootScene extends Phaser.Scene {
             frameHeight: 319
         });
         this.load.image("projectile", "/projectile.png?v=" + version);
+        this.load.image("stamina", "/stamina.svg?v=" + version);
+        this.load.image("boost", "/boost.png?v=" + version);
     }
 
     create() {
@@ -91,6 +93,6 @@ export class BootScene extends Phaser.Scene {
 
         graphics.destroy(); // Clean up graphics object
 
-        this.scene.start("Play");
+        this.scene.start("Menu");
     }
 }
