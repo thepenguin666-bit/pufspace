@@ -50,17 +50,45 @@ export class BootScene extends Phaser.Scene {
             frameWidth: 317,
             frameHeight: 319
         });
+        this.load.spritesheet("ghost", "/ghost.png?v=" + version, {
+            frameWidth: 317,
+            frameHeight: 319
+        });
         this.load.image("projectile", "/projectile.png?v=" + version);
     }
 
     create() {
         console.log("Phaser BootScene: Create started");
 
+        // Bat Animation
+        this.anims.create({
+            key: 'bat-fly',
+            frames: this.anims.generateFrameNumbers('bat', { start: 0, end: 3 }),
+            frameRate: 15,
+            repeat: -1,
+            yoyo: true
+        });
+
+        // Ghost Animation
+        this.anims.create({
+            key: 'ghost-fly',
+            frames: this.anims.generateFrameNumbers('ghost', { start: 0, end: 3 }),
+            frameRate: 12,
+            repeat: -1,
+            yoyo: true
+        });
+
         // Simple rain particle asset creation
         const graphics = this.add.graphics().setVisible(false);
         graphics.fillStyle(0xffffff, 1);
         graphics.fillRect(0, 0, 2, 12);
         graphics.generateTexture("rain", 2, 12);
+
+        graphics.clear();
+        graphics.fillStyle(0x000000, 1);
+        graphics.fillRect(0, 0, 8, 8);
+        graphics.generateTexture("debris", 8, 8);
+
         graphics.destroy(); // Clean up graphics object
 
         this.scene.start("Play");

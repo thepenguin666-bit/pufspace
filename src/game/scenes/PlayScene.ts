@@ -8,6 +8,7 @@ export class PlayScene extends Phaser.Scene {
     private lastShipY!: number;
 
     private bats!: Phaser.Physics.Arcade.Group;
+    private ghosts!: Phaser.Physics.Arcade.Group;
     private health!: number;
     private healthText!: Phaser.GameObjects.Text;
     private gameOverText!: Phaser.GameObjects.Text;
@@ -126,19 +127,11 @@ export class PlayScene extends Phaser.Scene {
 
         this.lastShipY = this.ship.y;
 
-        // Bat Animation
-        if (!this.anims.exists('bat-fly')) {
-            this.anims.create({
-                key: 'bat-fly',
-                frames: this.anims.generateFrameNumbers('bat', { start: 0, end: 3 }),
-                frameRate: 15,
-                repeat: -1,
-                yoyo: true
-            });
-        }
-
         // Bats Group
         this.bats = this.physics.add.group();
+
+        // Ghosts Group
+        this.ghosts = this.physics.add.group();
 
         // Projectiles Group
         this.projectiles = this.physics.add.group({
@@ -182,7 +175,7 @@ export class PlayScene extends Phaser.Scene {
                     bat.play('bat-fly');
                     bat.setScale(0.2);
                     bat.setAngle(180);
-                    bat.setData('health', 3);
+                    bat.setData('health', 2);
                     bat.setVelocityY(Phaser.Math.Between(200, 400));
                     if (bat.body) {
                         (bat.body as Phaser.Physics.Arcade.Body).setSize(bat.width * 0.6, bat.height * 0.6);
@@ -192,6 +185,30 @@ export class PlayScene extends Phaser.Scene {
             this.time.delayedCall(Phaser.Math.Between(1500, 3000), spawnWave);
         };
         spawnWave();
+
+        // Spawn Ghost
+        const spawnGhost = () => {
+            if (this.isGameOver) return;
+            const x = Phaser.Math.Between(50, DESIGN_WIDTH - 50);
+            const y = Phaser.Math.Between(-150, -50);
+            const ghost = this.ghosts.create(x, y, 'ghost') as Phaser.Physics.Arcade.Sprite;
+            ghost.play('ghost-fly');
+            ghost.setScale(0.4);
+            ghost.setData('health', 3); // Updated to 3 HP
+            ghost.setData('centerX', x);
+            ghost.setData('phase', Math.random() * Math.PI * 2);
+            ghost.setData('amplitude', Phaser.Math.Between(50, 100)); // Slightly wider curves
+            ghost.setData('frequency', Phaser.Math.Between(1.5, 2.5) / 1000); // Slower frequency for grace
+            ghost.setData('speedY', Phaser.Math.Between(80, 150)); // More stable vertical speed
+            ghost.setData('currentRotation', Math.PI); // Initial orientation
+            ghost.setDepth(5);
+
+            if (ghost.body) {
+                (ghost.body as Phaser.Physics.Arcade.Body).setSize(ghost.width * 0.5, ghost.height * 0.6);
+            }
+            this.time.delayedCall(Phaser.Math.Between(2500, 5000), spawnGhost);
+        };
+        spawnGhost();
 
         // UI: Health
         this.healthText = this.add.text(20, 20, "HP: 3", {
@@ -234,14 +251,20 @@ export class PlayScene extends Phaser.Scene {
             .setInteractive({ useHandCursor: true })
             .on('pointerdown', () => this.scene.restart());
 
-        // Physics: Ship vs Bats
+        // Physics: Ship vs Bats/Ghosts
         this.physics.add.overlap(this.ship, this.bats, (obj1, obj2) => {
             this.handlePlayerHit(obj2 as Phaser.Physics.Arcade.Sprite);
         });
+        this.physics.add.overlap(this.ship, this.ghosts, (obj1, obj2) => {
+            this.handlePlayerHit(obj2 as Phaser.Physics.Arcade.Sprite);
+        });
 
-        // Physics: Projectiles vs Bats
+        // Physics: Projectiles vs Bats/Ghosts
         this.physics.add.overlap(this.projectiles, this.bats, (proj, bat) => {
             this.handleProjectileHitBat(proj as Phaser.Physics.Arcade.Image, bat as Phaser.Physics.Arcade.Sprite);
+        });
+        this.physics.add.overlap(this.projectiles, this.ghosts, (proj, ghost) => {
+            this.handleProjectileHitBat(proj as Phaser.Physics.Arcade.Image, ghost as Phaser.Physics.Arcade.Sprite);
         });
 
         const layout = () => {
@@ -254,6 +277,7 @@ export class PlayScene extends Phaser.Scene {
 
     handlePlayerHit(bat: Phaser.Physics.Arcade.Sprite) {
         if (this.isGameOver) return;
+        this.createExplosion(bat.x, bat.y);
         bat.destroy();
         this.health--;
         this.healthText.setText("HP: " + this.health);
@@ -270,10 +294,26 @@ export class PlayScene extends Phaser.Scene {
         bat.setTint(0xff0000);
         this.time.delayedCall(100, () => { if (bat.active) bat.clearTint(); });
         if (newHealth <= 0) {
+            this.createExplosion(bat.x, bat.y);
             bat.destroy();
             this.score += 200;
             this.scoreText.setText("SCORE: " + this.score);
         }
+    }
+
+    createExplosion(x: number, y: number) {
+        const emitter = this.add.particles(x, y, 'debris', {
+            speed: { min: 50, max: 200 },
+            angle: { min: 0, max: 360 },
+            scale: { start: 1, end: 0 },
+            lifespan: 300,
+            quantity: 15,
+            stopAfter: 15,
+            emitting: true
+        });
+        emitter.setDepth(20);
+        // Auto-destroy emitter after duration
+        this.time.delayedCall(400, () => emitter.destroy());
     }
 
     triggerGameOver() {
@@ -363,6 +403,46 @@ export class PlayScene extends Phaser.Scene {
         for (let i = bts.length - 1; i >= 0; i--) {
             const child = bts[i] as Phaser.Physics.Arcade.Sprite;
             if (child.active && child.y > DESIGN_HEIGHT + 100) child.destroy();
+        }
+
+        const ghts = this.ghosts.getChildren();
+        for (let i = ghts.length - 1; i >= 0; i--) {
+            const child = ghts[i] as Phaser.Physics.Arcade.Sprite;
+            if (child.active) {
+                if (child.y > DESIGN_HEIGHT + 100) {
+                    child.destroy();
+                    continue;
+                }
+
+                // Sinusoidal Movement
+                const centerX = child.getData('centerX');
+                const phase = child.getData('phase');
+                const amplitude = child.getData('amplitude');
+                const frequency = child.getData('frequency');
+                const speedY = child.getData('speedY');
+                let currentRot = child.getData('currentRotation');
+
+                const newPhase = phase + frequency * dt;
+                child.setData('phase', newPhase);
+
+                const nextX = centerX + Math.sin(newPhase) * amplitude;
+                const nextY = child.y + (speedY * dt) / 1000;
+
+                // Calculate target rotation to face movement
+                const dx = nextX - child.x;
+                const dy = nextY - child.y;
+                const targetAngle = Math.atan2(dy, dx) - Math.PI / 2;
+
+                // Ease the rotation for a smooth "drift" feel
+                const diff = Phaser.Math.Angle.Wrap(targetAngle - currentRot);
+                const lerpFactor = 0.05 * (dt / 16.6);
+                currentRot += diff * lerpFactor;
+
+                child.setRotation(currentRot);
+                child.setData('currentRotation', currentRot);
+
+                child.setPosition(nextX, nextY);
+            }
         }
     }
 }
