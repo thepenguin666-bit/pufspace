@@ -27,7 +27,8 @@ export default function PhaserGame() {
                 display: "flex",
                 justifyContent: "center",
                 alignItems: "center",
-                backgroundColor: "#000"
+                backgroundColor: "#000",
+                transform: "translateY(-80px)"
             }}
         />
     );
