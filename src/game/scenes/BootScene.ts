@@ -58,6 +58,10 @@ export class BootScene extends Phaser.Scene {
         this.load.image("stamina", "/stamina.svg?v=" + version);
         this.load.image("boost", "/boost.png?v=" + version);
         this.load.image("tripleshot", "/3shot.svg?v=" + version);
+        this.load.image("heal", "/heal.svg?v=" + version);
+        this.load.image("boss", "/sam boss.png?v=" + version);
+        this.load.image("debris", "/projectile.png?v=" + version); // Re-use projectile as debris
+        this.load.image("boss-bg", "/6.png?v=" + version);
     }
 
     create() {
