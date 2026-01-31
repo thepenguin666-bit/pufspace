@@ -610,6 +610,7 @@ export class PlayScene extends Phaser.Scene {
         this.input.keyboard?.on("keydown-ESC", () => this.scene.start("Menu"));
 
         // Initialize Mobile Controls
+        this.input.addPointer(2); // Enable multi-touch
         this.createMobileControls();
     }
 
