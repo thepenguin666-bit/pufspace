@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { DESIGN_WIDTH, DESIGN_HEIGHT } from "../constants";
+import { PurpleWavePipeline } from "../pipelines/PurpleWavePipeline";
 
 export class PlayScene extends Phaser.Scene {
     private bg!: Phaser.GameObjects.TileSprite;
@@ -53,15 +54,19 @@ export class PlayScene extends Phaser.Scene {
 
     // Cryptonic Sam Boss
     private boss!: Phaser.Physics.Arcade.Image;
-    private bossHealth: number = 50;
-    private bossMaxHealth: number = 50;
+    private bossHealth: number = 250;
+    private bossMaxHealth: number = 250;
     private bossGroup!: Phaser.Physics.Arcade.Group;
     private bossState: "HIDDEN" | "ENTERING" | "FIGHTING" = "HIDDEN";
+    private isBossEnraged: boolean = false;
     private bossBG!: Phaser.GameObjects.Image;
+    private bossFG!: Phaser.GameObjects.Image;
     private bossLasers!: Phaser.Physics.Arcade.Group;
     private bossNameText!: Phaser.GameObjects.Text;
     private bossHealthBarBG!: Phaser.GameObjects.Rectangle;
     private bossHealthBarFill!: Phaser.GameObjects.Rectangle;
+    private batVomitEvent?: Phaser.Time.TimerEvent;
+    private bossFightStartTime: number = 0;
 
     private isInvulnerable: boolean = false;
 
@@ -71,10 +76,16 @@ export class PlayScene extends Phaser.Scene {
 
     create() {
         // Reset state
-        this.health = 3;
+        this.health = 10;
         this.score = 0;
         this.isGameOver = false;
         this.lastFired = 0;
+        this.bossState = "HIDDEN";
+        this.isBossEnraged = false;
+        if (this.batVomitEvent) {
+            this.batVomitEvent.remove(false);
+            this.batVomitEvent = undefined;
+        }
 
         this.bg = this.add
             .tileSprite(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, "background")
@@ -365,7 +376,7 @@ export class PlayScene extends Phaser.Scene {
         this.time.delayedCall(15000, () => this.spawnBoss());
 
         // UI: Health
-        this.healthText = this.add.text(20, 20, "HP: 3", {
+        this.healthText = this.add.text(20, 20, "HP: 10", {
             fontSize: "11px",
             fontFamily: '"Press Start 2P"',
             color: "#ff0000",
@@ -445,21 +456,6 @@ export class PlayScene extends Phaser.Scene {
         this.tripleShotUIBarFill = this.add.graphics();
         this.tripleShotUIContainer.add([tsIcon, tsBarBG, this.tripleShotUIBarFill]);
 
-        // DEBUG UI: BOSS SPAWN BUTTON
-        const spawnBtn = this.add.text(DESIGN_WIDTH / 2, 60, "BOSS SPAWN", {
-            fontSize: "14px",
-            fontFamily: '"Press Start 2P"',
-            color: "#00ff00",
-            backgroundColor: "#000000",
-            padding: { x: 5, y: 5 }
-        })
-            .setOrigin(0.5)
-            .setDepth(200)
-            .setInteractive({ useHandCursor: true })
-            .on('pointerdown', () => {
-                this.spawnBoss();
-                spawnBtn.setVisible(false);
-            });
 
         // Physics: Ship vs Bats/Ghosts
         this.physics.add.overlap(this.ship, this.bats, (obj1, obj2) => {
@@ -492,7 +488,7 @@ export class PlayScene extends Phaser.Scene {
         // Physics: Ship vs Heal
         this.physics.add.overlap(this.ship, this.heals, (ship, item) => {
             (item as Phaser.Physics.Arcade.Image).destroy();
-            this.health = 3;
+            this.health = Math.min(this.health + 5, 10);
             this.healthText.setText("HP: " + this.health);
         });
 
@@ -928,8 +924,9 @@ export class PlayScene extends Phaser.Scene {
     spawnBoss() {
         if (this.bossState !== "HIDDEN") return;
         this.bossState = "ENTERING";
-        this.bossHealth = 50;
-        this.bossMaxHealth = 50;
+        // Reset health to max when spawning
+        this.bossHealth = this.bossMaxHealth;
+        this.isBossEnraged = false;
 
         // Create Boss Sprite (Off-screen BOTTOM)
         this.boss = this.physics.add.image(DESIGN_WIDTH / 2, DESIGN_HEIGHT + 150, "boss");
@@ -938,7 +935,9 @@ export class PlayScene extends Phaser.Scene {
         this.boss.setVisible(true);
         this.boss.setActive(true);
         this.boss.setImmovable(true);
-        this.boss.body.onCollide = true;
+        if (this.boss.body) {
+            this.boss.body.onCollide = true;
+        }
 
         // Scale to fit width, THEN REDUCE 1.5X (was 3x, now doubled as requested)
         const targetWidth = DESIGN_WIDTH;
@@ -954,20 +953,42 @@ export class PlayScene extends Phaser.Scene {
             body.setAllowGravity(false);
         }
 
-        this.boss.setData('health', 50);
+        this.boss.setData('health', this.bossMaxHealth);
 
-        // Create Boss Background (6.png) - Start at Bottom
+        // Create Boss Background (6.png) - Static Layer
         this.bossBG = this.add.image(DESIGN_WIDTH / 2, DESIGN_HEIGHT + (DESIGN_HEIGHT / 2), "boss-bg");
         this.bossBG.setDepth(1);
+        this.bossBG.setTint(0xB2B2B2); // Reduce brightness by 30%
         this.bossBG.setDisplaySize(DESIGN_WIDTH * 1.2, DESIGN_HEIGHT);
+
+        // Create Boss Foreground (7.png) - Animated Tentacles
+        this.bossFG = this.add.image(DESIGN_WIDTH / 2, DESIGN_HEIGHT + (DESIGN_HEIGHT / 2), "boss-fg");
+        this.bossFG.setDepth(2); // Above BG, Below Boss (Boss is depth 5)
+        this.bossFG.setDisplaySize(DESIGN_WIDTH * 1.2, DESIGN_HEIGHT);
+
+        // Register and apply PurpleWavePipeline to Foreground Only
+        const renderer = this.renderer as Phaser.Renderer.WebGL.WebGLRenderer;
+        if (renderer.pipelines && !renderer.pipelines.has('PurpleWavePipeline')) {
+            renderer.pipelines.addPostPipeline('PurpleWavePipeline', PurpleWavePipeline);
+        }
+        this.bossFG.setPostPipeline('PurpleWavePipeline');
 
         // Move up by 50px (+60 -> +10)
         const destY = ((this.boss.height * scale) / 2) + 10;
 
-        // Tween Boss Entry & Background Entry (Synchronized)
+        // Tween Boss Entry & Backgrounds Entry (Synchronized)
         this.tweens.add({
-            targets: this.boss,
+            targets: [this.boss, this.bossBG],
             y: destY,
+            duration: 4000,
+            ease: "Power2"
+        });
+
+        // Tween Boss FG (Tentacles) - Align Bottom with Screen Bottom
+        // Target Y is center of screen since height = DESIGN_HEIGHT
+        this.tweens.add({
+            targets: this.bossFG,
+            y: DESIGN_HEIGHT / 2,
             duration: 4000,
             ease: "Power2"
         });
@@ -979,6 +1000,7 @@ export class PlayScene extends Phaser.Scene {
             ease: "Power2",
             onComplete: () => {
                 this.bossState = "FIGHTING";
+                this.bossFightStartTime = this.time.now; // Track start time for smooth sway
 
                 // Init Health Bar & Name - Anchor to Boss
                 // Text over Head
@@ -1032,9 +1054,11 @@ export class PlayScene extends Phaser.Scene {
 
         if (this.bossState === "FIGHTING") {
             // Horizontal Sway (Synchronized Boss & Background)
-            const swayX = Math.sin(time * 0.0015) * 40;
+            // Use relative time so sin starts at 0 (center)
+            const swayX = Math.sin((time - this.bossFightStartTime) * 0.0015) * 40;
             this.boss.x = DESIGN_WIDTH / 2 + swayX;
             if (this.bossBG) this.bossBG.x = DESIGN_WIDTH / 2 + swayX;
+            if (this.bossFG) this.bossFG.x = DESIGN_WIDTH / 2 + swayX;
 
             const currentHealth = this.boss.getData('health') ?? 50;
             const healthPercent = Phaser.Math.Clamp(currentHealth / this.bossMaxHealth, 0, 1);
@@ -1078,15 +1102,68 @@ export class PlayScene extends Phaser.Scene {
 
     fireLaser(x: number, y: number, angleDeg: number) {
         const laser = this.bossLasers.create(x, y, "projectile") as Phaser.Physics.Arcade.Image;
-        laser.setTint(0xff3333);
-        laser.setScale(1.0, 4.0);
-        laser.setBlendMode(Phaser.BlendModes.ADD);
+        laser.setTint(0xff0000);
+        laser.setScale(1.0, 2.2);
 
         const rad = Phaser.Math.DegToRad(angleDeg);
         const speed = 400;
         laser.setVelocity(Math.cos(rad) * speed, Math.sin(rad) * speed);
         laser.setRotation(rad + Math.PI / 2);
         laser.setDepth(12);
+    }
+
+    spawnBossBatVomit() {
+        if (!this.boss || !this.boss.active || this.bossState !== "FIGHTING") return;
+
+        // Swap Texture to Vomit Boss
+        this.boss.setTexture("vomitboss");
+
+        // Re-apply scale to fit width (same logic as spawnBoss)
+        const targetWidth = DESIGN_WIDTH;
+        let scale = targetWidth / this.boss.width;
+        scale *= (2 / 3);
+        this.boss.setScale(scale);
+
+        // Revert to normal boss after 2 seconds
+        this.time.delayedCall(2000, () => {
+            if (this.boss && this.boss.active) {
+                this.boss.setTexture("boss");
+                // Re-apply scale for original sprite
+                const targetWidth = DESIGN_WIDTH;
+                let scale = targetWidth / this.boss.width;
+                scale *= (2 / 3);
+                this.boss.setScale(scale);
+            }
+        });
+
+        // Spawn a stream of bats from the "mouth"
+        const spawnCount = 20; // Total bats in the stream
+        const delayBetweenBats = 100; // ms
+
+        for (let i = 0; i < spawnCount; i++) {
+            this.time.delayedCall(i * delayBetweenBats, () => {
+                if (!this.boss || !this.boss.active) return;
+
+                const mouthY = this.boss.y + (this.boss.height * this.boss.scaleY * 0.3); // Approximate mouth position
+                const bat = this.bats.create(this.boss.x, mouthY, 'bat') as Phaser.Physics.Arcade.Sprite;
+
+                bat.setScale(0.25);
+                bat.setAngle(180); // Facing down
+                bat.play('bat-fly');
+
+                // Random spread downwards
+                const spreadX = Phaser.Math.Between(-200, 200);
+                const speedY = Phaser.Math.Between(300, 500);
+
+                bat.setVelocity(spreadX, speedY);
+                bat.setDepth(11); // Above boss bg but below lasers
+
+                // Cleanup if they go off screen (already handled by world bounds or generic update loop, but safe to add)
+                this.time.delayedCall(3000, () => {
+                    if (bat && bat.active) bat.destroy();
+                });
+            });
+        }
     }
 
     private lastBossHitTime: number = 0;
@@ -1109,6 +1186,17 @@ export class PlayScene extends Phaser.Scene {
         if (currentHealth === undefined || currentHealth === null) currentHealth = 50;
 
         currentHealth -= 1; // Damage Value (Reduced to 1 as requested)
+        if (currentHealth <= 150 && !this.isBossEnraged) {
+            this.isBossEnraged = true;
+            this.spawnBossBatVomit();
+            // Start recurring timer
+            this.batVomitEvent = this.time.addEvent({
+                delay: 4000,
+                callback: () => this.spawnBossBatVomit(),
+                loop: true
+            });
+        }
+
         this.boss.setData('health', currentHealth);
         this.bossHealth = currentHealth;
 
@@ -1131,12 +1219,29 @@ export class PlayScene extends Phaser.Scene {
         }
 
         if (this.bossBG) {
-            this.tweens.add({
-                targets: this.bossBG,
-                alpha: 0,
-                duration: 1000,
-                onComplete: () => this.bossBG.destroy()
+            const bgX = this.bossBG.x;
+            const bgY = this.bossBG.y;
+
+            // BG Explosion of bats
+            const bgEmitter = this.add.particles(bgX, bgY, 'bat', {
+                speed: { min: 200, max: 600 },
+                angle: { min: 0, max: 360 },
+                scale: { start: 0.1, end: 0.1 }, // Constant scale (4x smaller)
+                lifespan: 2000,
+                quantity: 60,
+                gravityY: 0, // Radial burst
+                rotate: { min: 0, max: 360 },
+                emitting: false
             });
+            bgEmitter.setDepth(4); // Behind boss explosion (boss is depth 5, BG was -5 but particles should be visible)
+            bgEmitter.explode(60, bgX, bgY);
+
+            this.time.delayedCall(2500, () => bgEmitter.destroy());
+            this.bossBG.destroy();
+        }
+
+        if (this.bossFG) {
+            this.bossFG.destroy();
         }
 
         if (this.bossNameText) this.bossNameText.setVisible(false);
@@ -1150,6 +1255,28 @@ export class PlayScene extends Phaser.Scene {
                     by + Phaser.Math.Between(-100, 100)
                 );
             });
+        }
+
+        // Massive Bat Explosion
+        const emitter = this.add.particles(bx, by, 'bat', {
+            speed: { min: 400, max: 800 },
+            angle: { min: 0, max: 360 },
+            scale: { start: 0.3, end: 0.3 }, // Constant size
+            lifespan: 1000, // Faster life
+            quantity: 40,
+            gravityY: 0, // Fly outwards
+            rotate: { min: 0, max: 360 },
+            emitting: false
+        });
+
+        emitter.explode(30, bx, by);
+
+        // Auto-destroy emitter after duration
+        this.time.delayedCall(1200, () => emitter.destroy());
+
+        if (this.batVomitEvent) {
+            this.batVomitEvent.remove(false);
+            this.batVomitEvent = undefined;
         }
 
         this.boss.destroy();
