@@ -68,6 +68,21 @@ export class PlayScene extends Phaser.Scene {
     private batVomitEvent?: Phaser.Time.TimerEvent;
     private bossFightStartTime: number = 0;
 
+    // Mobile Controls
+    private joyBase!: Phaser.GameObjects.Arc;
+    private joyThumb!: Phaser.GameObjects.Arc;
+    private joyCursor: Phaser.Math.Vector2 = new Phaser.Math.Vector2(0, 0);
+    private isMobileFiring: boolean = false;
+    private fireBtn!: Phaser.GameObjects.Arc;
+    private mobilePauseBtn!: Phaser.GameObjects.Text;
+    private pauseRestartBtn!: Phaser.GameObjects.Text;
+
+    // Audio
+    private bgMusic!: Phaser.Sound.BaseSound;
+    private musicBtn!: Phaser.GameObjects.Text;
+    private isMusicPlaying: boolean = false;
+    private bossScaleFactor: number = 1;
+
     private isInvulnerable: boolean = false;
 
     constructor() {
@@ -82,6 +97,17 @@ export class PlayScene extends Phaser.Scene {
         this.lastFired = 0;
         this.bossState = "HIDDEN";
         this.isBossEnraged = false;
+        // Full Reset for Restart
+        this.isPaused = false;
+        this.stamina = this.maxStamina;
+        this.isBoostActive = false;
+        this.isTripleShotActive = false;
+        this.boostTimer = 0;
+        this.tripleShotTimer = 0;
+        if (this.ship) {
+            this.ship.clearTint();
+            this.ship.setAlpha(1);
+        }
         if (this.batVomitEvent) {
             this.batVomitEvent.remove(false);
             this.batVomitEvent = undefined;
@@ -393,11 +419,14 @@ export class PlayScene extends Phaser.Scene {
             strokeThickness: 2
         }).setDepth(100);
 
-        // UI: Stamina Bar
+        // UI: Stamina Bar (Positioned above Safe Zone)
         const staminaScale = DESIGN_WIDTH / 5585;
         const staminaHeight = 293 * staminaScale;
+        // Safe Zone is bottom 150px. We want it just above that.
+        const safeZoneTop = DESIGN_HEIGHT - 150;
+        const staminaY = safeZoneTop - (staminaHeight / 2) - 10;
 
-        this.staminaBarFrame = this.add.image(DESIGN_WIDTH / 2, DESIGN_HEIGHT - staminaHeight / 2, "stamina")
+        this.staminaBarFrame = this.add.image(DESIGN_WIDTH / 2, staminaY, "stamina")
             .setScale(staminaScale)
             .setDepth(101);
 
@@ -439,6 +468,70 @@ export class PlayScene extends Phaser.Scene {
             stroke: "#000000",
             strokeThickness: 6
         }).setOrigin(0.5).setDepth(201).setVisible(false);
+
+        // Mobile Pause Button (Bottom Center - Between Joystick and Fire)
+        // Joystick/Fire are approx at Y = DESIGN_HEIGHT - 75. 
+        // We place this slightly above or inline.
+        const pauseY = DESIGN_HEIGHT - 95;
+        this.mobilePauseBtn = this.add.text(DESIGN_WIDTH / 2, pauseY, "PAUSE", {
+            fontSize: "14px",
+            fontFamily: '"Press Start 2P"',
+            color: "#ffffff",
+            backgroundColor: "#000000",
+            padding: { x: 8, y: 5 }
+        })
+            .setOrigin(0.5)
+            .setDepth(200)
+            .setInteractive({ useHandCursor: true })
+            .on('pointerdown', () => {
+                if (this.isGameOver) return;
+                this.togglePause();
+            });
+
+        // Pause Menu - RESTART Button
+        this.pauseRestartBtn = this.add.text(DESIGN_WIDTH / 2, DESIGN_HEIGHT / 2 + 60, "RESTART", {
+            fontSize: "20px",
+            fontFamily: '"Press Start 2P"',
+            color: "#ff0000",
+            backgroundColor: "#000000",
+            padding: { x: 10, y: 5 }
+        })
+            .setOrigin(0.5)
+            .setDepth(202) // Above Overlay (200) and Text (201)
+            .setVisible(false)
+            .setInteractive({ useHandCursor: true })
+            .on('pointerdown', () => this.scene.restart());
+
+        // Audio Setup
+        this.bgMusic = this.sound.add("music", { loop: true, volume: 0.5 });
+
+        this.bgMusic = this.sound.add("music", { loop: true, volume: 0.5 });
+
+        // Music Toggle Button (Bottom Center, below Pause)
+        const musicY = DESIGN_HEIGHT - 55;
+        this.musicBtn = this.add.text(DESIGN_WIDTH / 2, musicY, "♫ OFF", {
+            fontSize: "16px",
+            fontFamily: '"Press Start 2P"',
+            color: "#ff0000", // Red for OFF
+            backgroundColor: "#000000",
+            padding: { x: 5, y: 5 }
+        })
+            .setOrigin(0.5)
+            .setDepth(200)
+            .setInteractive({ useHandCursor: true })
+            .on('pointerdown', () => {
+                if (this.isMusicPlaying) {
+                    this.bgMusic.stop();
+                    this.musicBtn.setText("♫ OFF");
+                    this.musicBtn.setColor("#ff0000");
+                    this.isMusicPlaying = false;
+                } else {
+                    this.bgMusic.play();
+                    this.musicBtn.setText("♫ ON");
+                    this.musicBtn.setColor("#00ff00"); // Green for ON
+                    this.isMusicPlaying = true;
+                }
+            });
 
         // UI: Power-up Timer (Top Right)
         this.boostUIContainer = this.add.container(DESIGN_WIDTH - 120, 40).setDepth(150).setVisible(false);
@@ -503,11 +596,90 @@ export class PlayScene extends Phaser.Scene {
         });
 
         const layout = () => {
+            const safeZoneHeight = 150;
+            const playableHeight = DESIGN_HEIGHT - safeZoneHeight;
+
+            // BG covers full screen now, but logic keeps ship in playable area
             this.bg.setSize(DESIGN_WIDTH, DESIGN_HEIGHT);
             this.bgHighlight.setSize(DESIGN_WIDTH, DESIGN_HEIGHT);
+
+            // Safe Zone Visual removed (Transparent)
+            // Logic for "unplayable" area remains in update()
         };
         layout();
         this.input.keyboard?.on("keydown-ESC", () => this.scene.start("Menu"));
+
+        // Initialize Mobile Controls
+        this.createMobileControls();
+    }
+
+    createMobileControls() {
+        // Joystick (Bottom Left)
+        const joyX = 80;
+        const joyY = DESIGN_HEIGHT - 80;
+        const joyRadius = 50;
+
+        this.joyBase = this.add.circle(joyX, joyY, joyRadius)
+            .setStrokeStyle(4, 0x10E0EF)
+            .setDepth(500)
+            .setScrollFactor(0)
+            .setInteractive() as Phaser.GameObjects.Arc;
+
+        this.joyThumb = this.add.circle(joyX, joyY, 20, 0x10E0EF)
+            .setDepth(501)
+            .setScrollFactor(0);
+
+        this.input.setDraggable(this.joyBase);
+
+        this.input.on('drag', (pointer: Phaser.Input.Pointer, gameObject: any, dragX: number, dragY: number) => {
+            if (gameObject !== this.joyBase) return;
+
+            const delta = new Phaser.Math.Vector2(dragX - joyX, dragY - joyY);
+            // Limit thumb distance
+            if (delta.length() > joyRadius) {
+                delta.normalize().scale(joyRadius);
+            }
+
+            this.joyThumb.setPosition(joyX + delta.x, joyY + delta.y);
+
+            // Normalize for movement (-1 to 1)
+            this.joyCursor.set(delta.x / joyRadius, delta.y / joyRadius);
+        });
+
+        this.input.on('dragend', (pointer: Phaser.Input.Pointer, gameObject: any) => {
+            if (gameObject !== this.joyBase) return;
+            this.joyThumb.setPosition(joyX, joyY);
+            this.joyCursor.set(0, 0);
+        });
+
+        // Fire Button (Bottom Right)
+        const fireBtnRadius = 40;
+        this.fireBtn = this.add.circle(DESIGN_WIDTH - 80, DESIGN_HEIGHT - 80, fireBtnRadius, 0xff0000, 0.5)
+            .setStrokeStyle(4, 0xffffff)
+            .setDepth(500)
+            .setScrollFactor(0)
+            .setInteractive() as Phaser.GameObjects.Arc;
+
+        const fireText = this.add.text(DESIGN_WIDTH - 80, DESIGN_HEIGHT - 80, "FIRE", {
+            fontSize: "12px",
+            fontFamily: '"Press Start 2P"',
+            color: "#ffffff"
+        }).setOrigin(0.5).setDepth(501).setScrollFactor(0);
+
+        this.fireBtn.on('pointerdown', () => {
+            this.isMobileFiring = true;
+            this.fireBtn.setFillStyle(0xffffff, 0.8);
+        });
+
+        this.fireBtn.on('pointerup', () => {
+            this.isMobileFiring = false;
+            this.fireBtn.setFillStyle(0xff0000, 0.5);
+        });
+
+        this.fireBtn.on('pointerout', () => {
+            this.isMobileFiring = false;
+            this.fireBtn.setFillStyle(0xff0000, 0.5);
+        });
     }
 
     handlePlayerHit(enemy: Phaser.GameObjects.GameObject, shouldDestroy: boolean = true) {
@@ -597,16 +769,7 @@ export class PlayScene extends Phaser.Scene {
         // Toggle Pause
         if (Phaser.Input.Keyboard.JustDown(this.enterKey)) {
             if (!this.isGameOver) {
-                this.isPaused = !this.isPaused;
-                if (this.isPaused) {
-                    this.physics.pause();
-                    this.pauseOverlay.setVisible(true);
-                    this.pauseText.setVisible(true);
-                } else {
-                    this.physics.resume();
-                    this.pauseOverlay.setVisible(false);
-                    this.pauseText.setVisible(false);
-                }
+                this.togglePause();
             }
         }
 
@@ -659,7 +822,7 @@ export class PlayScene extends Phaser.Scene {
         const deltaY = this.ship.y - this.lastShipY;
         this.lastShipY = this.ship.y;
 
-        if (this.fireKey && this.fireKey.isDown) {
+        if ((this.fireKey && this.fireKey.isDown) || this.isMobileFiring) {
             if (time > this.lastFired && this.stamina >= 1) {
                 const projectile = this.projectiles.create(this.ship.x, this.ship.y - this.ship.displayHeight / 2, 'projectile') as Phaser.Physics.Arcade.Image;
                 if (projectile) {
@@ -726,7 +889,11 @@ export class PlayScene extends Phaser.Scene {
         const fillMaxW = 5413 * staminaScale;
         const fillH = 217 * staminaScale;
         const fillX = (86 * staminaScale) + (DESIGN_WIDTH / 2 - (5585 * staminaScale) / 2); // Absolute X
-        const fillY = (DESIGN_HEIGHT - 293 * staminaScale) + (38 * staminaScale);
+
+        // Match the Y position logic from create()
+        const safeZoneTop = DESIGN_HEIGHT - 150;
+        const staminaY = safeZoneTop - (293 * staminaScale / 2) - 10;
+        const fillY = (staminaY - (293 * staminaScale / 2)) + (38 * staminaScale);
 
         // Draw Background (Dark)
         this.staminaBarFill.fillStyle(0x000000, 0.5);
@@ -746,11 +913,12 @@ export class PlayScene extends Phaser.Scene {
             const vel = new Phaser.Math.Vector2(0, 0);
 
             // Input Handling with Boundary Checks to prevent Jitter
-            if (cursors.left.isDown) vel.x = -speed;
-            else if (cursors.right.isDown) vel.x = speed;
+            if (cursors.left.isDown || this.joyCursor.x < -0.1) vel.x = -speed;
+            else if (cursors.right.isDown || this.joyCursor.x > 0.1) vel.x = speed;
 
             const shipHalfH = this.ship.displayHeight / 2;
-            const bottomLimit = DESIGN_HEIGHT - shipHalfH;
+            const playableHeight = DESIGN_HEIGHT - 150;
+            const bottomLimit = playableHeight - shipHalfH;
 
             // Check Boss Fight Top Limit
             let topLimit = 0; // Default world bound
@@ -758,12 +926,12 @@ export class PlayScene extends Phaser.Scene {
                 topLimit = (DESIGN_HEIGHT / 2) + shipHalfH;
             }
 
-            if (cursors.up.isDown) {
+            if (cursors.up.isDown || this.joyCursor.y < -0.1) {
                 // Prevent moving up if at top limit
                 if (this.ship.y > topLimit + 5) { // Small buffer
                     vel.y = -speed;
                 }
-            } else if (cursors.down.isDown) {
+            } else if (cursors.down.isDown || this.joyCursor.y > 0.1) {
                 // Prevent moving down if at bottom limit
                 if (this.ship.y < bottomLimit - 5) { // Small buffer
                     vel.y = speed;
@@ -806,10 +974,11 @@ export class PlayScene extends Phaser.Scene {
 
         // GLOBAL SCREEN BOUNDARIES (Manual Clamp because WorldCollision excludes Top/Bottom for enemies)
         const shipHalfH = this.ship.displayHeight / 2;
+        const playableHeight = DESIGN_HEIGHT - 150;
 
-        // 1. Bottom Limit (Always active)
-        if (this.ship.y > DESIGN_HEIGHT - shipHalfH) {
-            this.ship.setY(DESIGN_HEIGHT - shipHalfH);
+        // 1. Bottom Limit (Always active, respect Safe Zone)
+        if (this.ship.y > playableHeight - shipHalfH) {
+            this.ship.setY(playableHeight - shipHalfH);
             if (this.ship.body) {
                 (this.ship.body as Phaser.Physics.Arcade.Body).setVelocityY(Math.min(0, (this.ship.body as Phaser.Physics.Arcade.Body).velocity.y));
             }
@@ -820,6 +989,17 @@ export class PlayScene extends Phaser.Scene {
             this.ship.setY(shipHalfH);
             if (this.ship.body) {
                 (this.ship.body as Phaser.Physics.Arcade.Body).setVelocityY(Math.max(0, (this.ship.body as Phaser.Physics.Arcade.Body).velocity.y));
+            }
+        } else if (this.bossState !== "HIDDEN") {
+            // 3. Top Limit during Boss Fight
+            // User requested to move it 150px UP from the previous 150px limit.
+            // So basically allow it to go almost to the top.
+            const bossFightTopLimit = 5; // Effectively top of screen
+            if (this.ship.y < bossFightTopLimit + shipHalfH) {
+                this.ship.setY(bossFightTopLimit + shipHalfH);
+                if (this.ship.body) {
+                    (this.ship.body as Phaser.Physics.Arcade.Body).setVelocityY(Math.max(0, (this.ship.body as Phaser.Physics.Arcade.Body).velocity.y));
+                }
             }
         }
 
@@ -939,32 +1119,50 @@ export class PlayScene extends Phaser.Scene {
             this.boss.body.onCollide = true;
         }
 
-        // Scale to fit width, THEN REDUCE 1.5X (was 3x, now doubled as requested)
+        // Playable Height (Screen - Safe Zone)
+        const safeZoneHeight = 150;
+        const playableHeight = DESIGN_HEIGHT - safeZoneHeight;
+
+        // Global Scaling Ratio (New Height / Old Height)
+        const globalRatio = playableHeight / DESIGN_HEIGHT;
+
+        // Scale to fit width, THEN REDUCE PROPORTIONALLY
+        // Old Logic was: (DESIGN_WIDTH / width) * (2/3)
+        // New Logic: Apply globalRatio to that
         const targetWidth = DESIGN_WIDTH;
-        let scale = targetWidth / this.boss.width;
-        scale *= (2 / 3); // Doubled from previous 1/3
-        this.boss.setScale(scale);
+        let baseScale = (targetWidth / this.boss.width) * (2 / 3);
+        this.bossScaleFactor = baseScale * globalRatio;
+
+        this.boss.setScale(this.bossScaleFactor);
         this.boss.setOrigin(0.5, 0.5);
 
+        // Auto-Size Hitbox (Reliable with Group)
         // Auto-Size Hitbox (Reliable with Group)
         if (this.boss.body) {
             const body = this.boss.body as Phaser.Physics.Arcade.Body;
             body.updateFromGameObject();
             body.setAllowGravity(false);
+            // MANUALLY OFFSET HITBOX UPWARDS
+            // This allows the ship to fly higher before "visually" overlapping/hitting the body logic?
+            // Actually, overlap doesn't block movement, but user thinks it does.
+            // Move hitbox UP by 150px so it's "higher" on the screen (lower Y).
+            // Default offset is 0,0.
+            body.setOffset(0, -150);
         }
 
         this.boss.setData('health', this.bossMaxHealth);
 
         // Create Boss Background (6.png) - Static Layer
-        this.bossBG = this.add.image(DESIGN_WIDTH / 2, DESIGN_HEIGHT + (DESIGN_HEIGHT / 2), "boss-bg");
+        // FIX: Use DESIGN_HEIGHT to ensure full coverage, not just playable area
+        this.bossBG = this.add.image(DESIGN_WIDTH / 2, playableHeight + (playableHeight / 2), "boss-bg");
         this.bossBG.setDepth(1);
         this.bossBG.setTint(0xB2B2B2); // Reduce brightness by 30%
-        this.bossBG.setDisplaySize(DESIGN_WIDTH * 1.2, DESIGN_HEIGHT);
+        this.bossBG.setDisplaySize((DESIGN_WIDTH * 1.2) * globalRatio * 1.5, DESIGN_HEIGHT * 1.5);
 
         // Create Boss Foreground (7.png) - Animated Tentacles
-        this.bossFG = this.add.image(DESIGN_WIDTH / 2, DESIGN_HEIGHT + (DESIGN_HEIGHT / 2), "boss-fg");
+        this.bossFG = this.add.image(DESIGN_WIDTH / 2, playableHeight + (playableHeight / 2), "boss-fg");
         this.bossFG.setDepth(2); // Above BG, Below Boss (Boss is depth 5)
-        this.bossFG.setDisplaySize(DESIGN_WIDTH * 1.2, DESIGN_HEIGHT);
+        this.bossFG.setDisplaySize((DESIGN_WIDTH * 1.2) * globalRatio * 1.5, DESIGN_HEIGHT * 1.5);
 
         // Register and apply PurpleWavePipeline to Foreground Only
         const renderer = this.renderer as Phaser.Renderer.WebGL.WebGLRenderer;
@@ -973,29 +1171,43 @@ export class PlayScene extends Phaser.Scene {
         }
         this.bossFG.setPostPipeline('PurpleWavePipeline');
 
-        // Move up by 50px (+60 -> +10)
-        const destY = ((this.boss.height * scale) / 2) + 10;
+        // Move up by 50px (Scaled) -> Then shift DOWN 50px as requested -> Now UP 80px as requested
+        // Original DestY logic: ((this.boss.height * this.bossScaleFactor) / 2) + 30;
+        // Previous Shift: + 80 (Net +50 relative to +30)
+        // New Shift: + 80 - 80 = 0
+        const destY = ((this.boss.height * this.bossScaleFactor) / 2);
 
         // Tween Boss Entry & Backgrounds Entry (Synchronized)
+        // Backgrounds move to center of playable area
         this.tweens.add({
-            targets: [this.boss, this.bossBG],
+            targets: [this.bossBG],
+            // Previous: Center + 50px
+            // Reverted to: Center + 50
+            y: (playableHeight / 2) + 50,
+            duration: 4000,
+            ease: "Power2"
+        });
+
+        // Boss moves to destY
+        this.tweens.add({
+            targets: [this.boss],
             y: destY,
             duration: 4000,
             ease: "Power2"
         });
 
-        // Tween Boss FG (Tentacles) - Align Bottom with Screen Bottom
-        // Target Y is center of screen since height = DESIGN_HEIGHT
         this.tweens.add({
             targets: this.bossFG,
-            y: DESIGN_HEIGHT / 2,
+            // Previous: Center + 75
+            // Reverted to: Center + 75
+            y: (playableHeight / 2) + 75,
             duration: 4000,
             ease: "Power2"
         });
 
         this.tweens.add({
             targets: this.bossBG,
-            y: DESIGN_HEIGHT / 2,
+            y: playableHeight / 2,
             duration: 4000,
             ease: "Power2",
             onComplete: () => {
@@ -1119,20 +1331,14 @@ export class PlayScene extends Phaser.Scene {
         this.boss.setTexture("vomitboss");
 
         // Re-apply scale to fit width (same logic as spawnBoss)
-        const targetWidth = DESIGN_WIDTH;
-        let scale = targetWidth / this.boss.width;
-        scale *= (2 / 3);
-        this.boss.setScale(scale);
+        this.boss.setScale(this.bossScaleFactor);
 
         // Revert to normal boss after 2 seconds
         this.time.delayedCall(2000, () => {
             if (this.boss && this.boss.active) {
                 this.boss.setTexture("boss");
                 // Re-apply scale for original sprite
-                const targetWidth = DESIGN_WIDTH;
-                let scale = targetWidth / this.boss.width;
-                scale *= (2 / 3);
-                this.boss.setScale(scale);
+                this.boss.setScale(this.bossScaleFactor);
             }
         });
 
@@ -1287,5 +1493,22 @@ export class PlayScene extends Phaser.Scene {
 
         this.score += 5000;
         this.scoreText.setText("SCORE: " + this.score);
+    }
+
+    togglePause() {
+        this.isPaused = !this.isPaused;
+        if (this.isPaused) {
+            this.physics.pause();
+            this.pauseOverlay.setVisible(true);
+            this.pauseText.setVisible(true);
+            this.pauseRestartBtn.setVisible(true);
+            this.mobilePauseBtn.setText("RESUME");
+        } else {
+            this.physics.resume();
+            this.pauseOverlay.setVisible(false);
+            this.pauseText.setVisible(false);
+            this.pauseRestartBtn.setVisible(false);
+            this.mobilePauseBtn.setText("PAUSE");
+        }
     }
 }

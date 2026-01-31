@@ -58,8 +58,15 @@ export class MenuScene extends Phaser.Scene {
             color: "#10E0EF"
         }).setOrigin(0.5);
 
+        // Mobile Controls Info
+        this.add.text(DESIGN_WIDTH / 2, controlsY + 100, "MOBILE: JOYSTICK + FIRE BTN", {
+            fontSize: "12px",
+            fontFamily: '"Press Start 2P"',
+            color: "#FFA500"
+        }).setOrigin(0.5);
+
         // Stamina Info
-        this.add.text(DESIGN_WIDTH / 2, controlsY + 105, "WATCH YOUR STAMINA!", {
+        this.add.text(DESIGN_WIDTH / 2, controlsY + 130, "WATCH YOUR STAMINA!", {
             fontSize: "10px",
             fontFamily: '"Press Start 2P"',
             color: "#ff0000"
