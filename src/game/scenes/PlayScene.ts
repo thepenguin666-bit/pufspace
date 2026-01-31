@@ -923,7 +923,7 @@ export class PlayScene extends Phaser.Scene {
             // Check Boss Fight Top Limit
             let topLimit = 0; // Default world bound
             if (this.bossState !== "HIDDEN" && this.boss && this.boss.active) {
-                topLimit = (DESIGN_HEIGHT / 2) + shipHalfH;
+                topLimit = (DESIGN_HEIGHT / 2) + shipHalfH - 150;
             }
 
             if (cursors.up.isDown || this.joyCursor.y < -0.1) {
