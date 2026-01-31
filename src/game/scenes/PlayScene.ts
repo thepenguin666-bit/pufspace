@@ -37,6 +37,14 @@ export class PlayScene extends Phaser.Scene {
     private boostUIBarFill!: Phaser.GameObjects.Graphics;
     private maxBoostTime: number = 10000;
 
+    // Triple Shot Power-up
+    private tripleShots!: Phaser.Physics.Arcade.Group;
+    private isTripleShotActive: boolean = false;
+    private tripleShotTimer: number = 0;
+    private tripleShotUIContainer!: Phaser.GameObjects.Container;
+    private tripleShotUIBarFill!: Phaser.GameObjects.Graphics;
+    private maxTripleShotTime: number = 15000;
+
     constructor() {
         super("Play");
     }
@@ -51,6 +59,9 @@ export class PlayScene extends Phaser.Scene {
         this.bg = this.add
             .tileSprite(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, "background")
             .setOrigin(0);
+
+        // Disable collision on vertical edges (top/bottom) so enemies can enter/exit
+        this.physics.world.setBoundsCollision(true, true, false, false);
 
         // Highlight layer for "Cloud Flash" (same texture, ADD blend)
         this.bgHighlight = this.add
@@ -142,10 +153,18 @@ export class PlayScene extends Phaser.Scene {
         this.lastShipY = this.ship.y;
 
         // Bats Group
-        this.bats = this.physics.add.group();
+        this.bats = this.physics.add.group({
+            bounceX: 0.5,
+            bounceY: 0,
+            collideWorldBounds: true
+        });
 
         // Ghosts Group
-        this.ghosts = this.physics.add.group();
+        this.ghosts = this.physics.add.group({
+            bounceX: 0.5,
+            bounceY: 0,
+            collideWorldBounds: false // Disable hard collision for soft turn
+        });
 
         // Projectiles Group
         this.projectiles = this.physics.add.group({
@@ -156,6 +175,9 @@ export class PlayScene extends Phaser.Scene {
 
         // Boosts Group
         this.boosts = this.physics.add.group();
+
+        // Triple Shots Group
+        this.tripleShots = this.physics.add.group();
 
         // Input
         if (this.input.keyboard) {
@@ -194,7 +216,9 @@ export class PlayScene extends Phaser.Scene {
                     bat.setScale(0.2);
                     bat.setAngle(180);
                     bat.setData('health', 2);
+                    // Straight down movement
                     bat.setVelocityY(Phaser.Math.Between(200, 400));
+                    bat.setVelocityX(0);
                     if (bat.body) {
                         (bat.body as Phaser.Physics.Arcade.Body).setSize(bat.width * 0.6, bat.height * 0.6);
                     }
@@ -212,25 +236,27 @@ export class PlayScene extends Phaser.Scene {
             const ghost = this.ghosts.create(x, y, 'ghost') as Phaser.Physics.Arcade.Sprite;
             ghost.play('ghost-fly');
             ghost.setScale(0.4);
-            ghost.setData('health', 3); // Updated to 3 HP
-            ghost.setData('centerX', x);
-            ghost.setData('phase', Math.random() * Math.PI * 2);
-            ghost.setData('amplitude', Phaser.Math.Between(50, 100)); // Slightly wider curves
-            ghost.setData('frequency', Phaser.Math.Between(1.5, 2.5) / 1000); // Slower frequency for grace
-            ghost.setData('speedY', Phaser.Math.Between(80, 150)); // More stable vertical speed
-            ghost.setData('currentRotation', Math.PI); // Initial orientation
+            ghost.setData('health', 3);
+            ghost.setData('speedY', Phaser.Math.Between(80, 150));
+            ghost.setData('swaySpeed', Phaser.Math.Between(1, 3) * 0.001); // Lower frequency = wider turns
+            ghost.setData('swayForce', Phaser.Math.Between(150, 250));     // Higher force = more horizontal distance
             ghost.setDepth(5);
+
+            // Initial velocity
+            ghost.setVelocityY(ghost.getData('speedY'));
 
             if (ghost.body) {
                 (ghost.body as Phaser.Physics.Arcade.Body).setSize(ghost.width * 0.5, ghost.height * 0.6);
+                // Allow them to slide/bounce horizontally but drag stops infinite sliding
+                ghost.setDragX(30);
             }
             this.time.delayedCall(Phaser.Math.Between(2500, 5000), spawnGhost);
         };
         spawnGhost();
 
-        // Spawn Boost every 30s
+        // Spawn Boost every 15s
         this.time.addEvent({
-            delay: 30000,
+            delay: 15000,
             loop: true,
             callback: () => {
                 if (this.isGameOver) return;
@@ -244,6 +270,30 @@ export class PlayScene extends Phaser.Scene {
                 this.tweens.add({
                     targets: boost,
                     scaleX: -0.3, // Re-adjusted scale for tween
+                    duration: 500,
+                    yoyo: true,
+                    repeat: -1,
+                    ease: "Sine.easeInOut"
+                });
+            }
+        });
+
+        // Spawn Triple Shot every 25s
+        this.time.addEvent({
+            delay: 25000,
+            loop: true,
+            callback: () => {
+                if (this.isGameOver) return;
+                const x = Phaser.Math.Between(50, DESIGN_WIDTH - 50);
+                const item = this.tripleShots.create(x, -50, "tripleshot") as Phaser.Physics.Arcade.Image;
+                item.setScale(0.06);
+                item.setVelocityY(150);
+                item.setDepth(8);
+
+                // Rotation effect (similar to boost)
+                this.tweens.add({
+                    targets: item,
+                    scaleX: -0.06,
                     duration: 500,
                     yoyo: true,
                     repeat: -1,
@@ -326,6 +376,13 @@ export class PlayScene extends Phaser.Scene {
 
         this.boostUIContainer.add([uiIcon, uiBarBG, this.boostUIBarFill]);
 
+        // UI: Triple Shot Timer
+        this.tripleShotUIContainer = this.add.container(DESIGN_WIDTH - 120, 80).setDepth(150).setVisible(false); // Default posY below boost
+        const tsIcon = this.add.image(-15, 0, "tripleshot").setScale(0.033);
+        const tsBarBG = this.add.rectangle(10, 0, 80, 10, 0x000000, 0.5).setOrigin(0, 0.5);
+        this.tripleShotUIBarFill = this.add.graphics();
+        this.tripleShotUIContainer.add([tsIcon, tsBarBG, this.tripleShotUIBarFill]);
+
         // Physics: Ship vs Bats/Ghosts
         this.physics.add.overlap(this.ship, this.bats, (obj1, obj2) => {
             this.handlePlayerHit(obj2 as Phaser.Physics.Arcade.Sprite);
@@ -347,6 +404,17 @@ export class PlayScene extends Phaser.Scene {
             (boost as Phaser.Physics.Arcade.Image).destroy();
             this.activateBoost();
         });
+
+        // Physics: Ship vs Triple Shot
+        this.physics.add.overlap(this.ship, this.tripleShots, (ship, item) => {
+            (item as Phaser.Physics.Arcade.Image).destroy();
+            this.activateTripleShot();
+        });
+
+        // Physics: Enemy vs Enemy (Bats and Ghosts)
+        this.physics.add.collider(this.bats, this.bats);
+        this.physics.add.collider(this.ghosts, this.ghosts);
+        this.physics.add.collider(this.bats, this.ghosts);
 
         const layout = () => {
             this.bg.setSize(DESIGN_WIDTH, DESIGN_HEIGHT);
@@ -412,6 +480,12 @@ export class PlayScene extends Phaser.Scene {
         this.boostUIContainer.setVisible(true);
     }
 
+    activateTripleShot() {
+        this.isTripleShotActive = true;
+        this.tripleShotTimer = this.maxTripleShotTime;
+        this.tripleShotUIContainer.setVisible(true);
+    }
+
     update(time: number, dt: number) {
         // Toggle Pause
         if (Phaser.Input.Keyboard.JustDown(this.enterKey)) {
@@ -448,6 +522,29 @@ export class PlayScene extends Phaser.Scene {
             }
         }
 
+        // Triple Shot Timer
+        if (this.isTripleShotActive) {
+            this.tripleShotTimer -= dt;
+
+            // Update UI Bar
+            this.tripleShotUIBarFill.clear();
+            const fillW = Math.max(0, (this.tripleShotTimer / this.maxTripleShotTime) * 80);
+            this.tripleShotUIBarFill.fillStyle(0x00ffff, 1); // Cyan for Triple Shot
+            this.tripleShotUIBarFill.fillRect(10, -5, fillW, 10);
+
+            // Stacking Logic: Move down if boost is active
+            if (this.isBoostActive) {
+                this.tripleShotUIContainer.setY(80); // Below Boost (40 + 40 gap)
+            } else {
+                this.tripleShotUIContainer.setY(40); // Take Boost's spot
+            }
+
+            if (this.tripleShotTimer <= 0) {
+                this.isTripleShotActive = false;
+                this.tripleShotUIContainer.setVisible(false);
+            }
+        }
+
         const deltaY = this.ship.y - this.lastShipY;
         this.lastShipY = this.ship.y;
 
@@ -463,6 +560,26 @@ export class PlayScene extends Phaser.Scene {
                     if (this.isBoostActive) {
                         projectile.setTint(0xadff2f);
                     }
+
+                    // Triple Shot Logic
+                    if (this.isTripleShotActive) {
+                        // Left Projectile
+                        const leftProj = this.projectiles.create(this.ship.x, this.ship.y - this.ship.displayHeight / 2, 'projectile') as Phaser.Physics.Arcade.Image;
+                        if (leftProj) {
+                            leftProj.setVelocity(-300, -900); // Angle left
+                            leftProj.setRotation(-0.3);
+                            if (this.isBoostActive) leftProj.setTint(0xadff2f);
+                        }
+
+                        // Right Projectile
+                        const rightProj = this.projectiles.create(this.ship.x, this.ship.y - this.ship.displayHeight / 2, 'projectile') as Phaser.Physics.Arcade.Image;
+                        if (rightProj) {
+                            rightProj.setVelocity(300, -900); // Angle right
+                            rightProj.setRotation(0.3);
+                            if (this.isBoostActive) rightProj.setTint(0xadff2f);
+                        }
+                    }
+
                     const fireRate = this.isBoostActive ? 100 : 166.6;
                     this.lastFired = time + fireRate;
                     if (!this.isBoostActive) {
@@ -558,7 +675,23 @@ export class PlayScene extends Phaser.Scene {
         const bts = this.bats.getChildren();
         for (let i = bts.length - 1; i >= 0; i--) {
             const child = bts[i] as Phaser.Physics.Arcade.Sprite;
-            if (child.active && child.y > DESIGN_HEIGHT + 100) child.destroy();
+            if (child.active) {
+                if (child.y > DESIGN_HEIGHT + 100) {
+                    child.destroy();
+                    continue;
+                }
+
+                if (child.body) {
+                    // Enforce downward movement
+                    if (child.body.velocity.y < 0) {
+                        child.setVelocityY(Math.max(100, Math.abs(child.body.velocity.y)));
+                    }
+                    // Cap horizontal speed to prevent erratic bouncing
+                    if (Math.abs(child.body.velocity.x) > 200) {
+                        child.setVelocityX(200 * Math.sign(child.body.velocity.x));
+                    }
+                }
+            }
         }
 
         const ghts = this.ghosts.getChildren();
@@ -570,34 +703,48 @@ export class PlayScene extends Phaser.Scene {
                     continue;
                 }
 
-                // Sinusoidal Movement
-                const centerX = child.getData('centerX');
-                const phase = child.getData('phase');
-                const amplitude = child.getData('amplitude');
-                const frequency = child.getData('frequency');
-                const speedY = child.getData('speedY');
-                let currentRot = child.getData('currentRotation');
+                // Acceleration-based movement (Natural Physics)
+                const swaySpeed = child.getData('swaySpeed') || 0.003;
+                const swayForce = child.getData('swayForce') || 50;
 
-                const newPhase = phase + frequency * dt;
-                child.setData('phase', newPhase);
+                // Set acceleration based on time (Swaying)
+                const normalAccelX = Math.sin(time * swaySpeed) * swayForce;
 
-                const nextX = centerX + Math.sin(newPhase) * amplitude;
-                const nextY = child.y + (speedY * dt) / 1000;
+                // Soft Boundary Logic
+                const margin = 75;
+                const turnForce = 450;
 
-                // Calculate target rotation to face movement
-                const dx = nextX - child.x;
-                const dy = nextY - child.y;
-                const targetAngle = Math.atan2(dy, dx) - Math.PI / 2;
+                if (child.x < margin) {
+                    // Left Edge: Slow down if moving left, push right
+                    if ((child.body?.velocity.x ?? 0) < 0) child.setDragX(300);
+                    child.setAccelerationX(turnForce);
+                } else if (child.x > DESIGN_WIDTH - margin) {
+                    // Right Edge: Slow down if moving right, push left
+                    if ((child.body?.velocity.x ?? 0) > 0) child.setDragX(300);
+                    child.setAccelerationX(-turnForce);
+                } else {
+                    // Center: Normal sway
+                    child.setDragX(30);
+                    child.setAccelerationX(normalAccelX);
+                }
 
-                // Ease the rotation for a smooth "drift" feel
+                // Enforce downward movement safety net
+                const maxSpeedY = child.getData('speedY') || 100;
+                if (child.body) {
+                    if (child.body.velocity.y < 50) { // If it slows down too much or goes up
+                        child.setVelocityY(maxSpeedY);
+                    }
+                }
+
+                // Rotation follows velocity
+                const vx = child.body?.velocity.x || 0;
+                const vy = child.body?.velocity.y || 100;
+                const targetAngle = Math.atan2(vy, vx) - Math.PI / 2;
+
+                // Smooth rotation
+                const currentRot = child.rotation;
                 const diff = Phaser.Math.Angle.Wrap(targetAngle - currentRot);
-                const lerpFactor = 0.05 * (dt / 16.6);
-                currentRot += diff * lerpFactor;
-
-                child.setRotation(currentRot);
-                child.setData('currentRotation', currentRot);
-
-                child.setPosition(nextX, nextY);
+                child.rotation += diff * 0.1;
             }
         }
 
@@ -605,6 +752,13 @@ export class PlayScene extends Phaser.Scene {
         const bsts = this.boosts.getChildren();
         for (let i = bsts.length - 1; i >= 0; i--) {
             const child = bsts[i] as Phaser.Physics.Arcade.Image;
+            if (child.active && child.y > DESIGN_HEIGHT + 50) child.destroy();
+        }
+
+        // Triple Shot Cleanup
+        const tshots = this.tripleShots.getChildren();
+        for (let i = tshots.length - 1; i >= 0; i--) {
+            const child = tshots[i] as Phaser.Physics.Arcade.Image;
             if (child.active && child.y > DESIGN_HEIGHT + 50) child.destroy();
         }
     }
