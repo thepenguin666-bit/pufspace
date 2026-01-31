@@ -1,4 +1,4 @@
-import Phaser from "phaser";
+import * as Phaser from "phaser";
 import { DESIGN_WIDTH, DESIGN_HEIGHT } from "../constants";
 
 export class MenuScene extends Phaser.Scene {
