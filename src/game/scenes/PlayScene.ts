@@ -502,20 +502,31 @@ export class PlayScene extends Phaser.Scene {
         // Audio Setup
         this.bgMusic = this.sound.add("music", { loop: true, volume: 0.5 });
 
-        // Default: OFF as requested
-        this.isMusicPlaying = false;
+        // Music Persistence Logic
+        const storedMusicState = this.registry.get('musicEnabled');
+        if (storedMusicState === undefined) {
+            // Default: OFF (Wait for user to turn on first time)
+            this.isMusicPlaying = false;
+            this.registry.set('musicEnabled', false);
+        } else {
+            this.isMusicPlaying = storedMusicState;
+        }
 
-        // Cleanup on Shutdown (stops music when restarting scene)
+        if (this.isMusicPlaying) {
+            this.bgMusic.play();
+        }
+
+        // Cleanup on Shutdown (Ensures old track stops so new one starts fresh)
         this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => {
             if (this.bgMusic) this.bgMusic.stop();
         });
 
         // Music Toggle Button (Bottom Center, below Pause)
         const musicY = DESIGN_HEIGHT - 55;
-        this.musicBtn = this.add.text(DESIGN_WIDTH / 2, musicY, "♫ OFF", {
+        this.musicBtn = this.add.text(DESIGN_WIDTH / 2, musicY, this.isMusicPlaying ? "♫ ON" : "♫ OFF", {
             fontSize: "16px",
             fontFamily: '"Press Start 2P"',
-            color: "#ff0000",
+            color: this.isMusicPlaying ? "#00ff00" : "#ff0000",
             backgroundColor: "#000000",
             padding: { x: 5, y: 5 }
         })
@@ -528,11 +539,13 @@ export class PlayScene extends Phaser.Scene {
                     this.musicBtn.setText("♫ OFF");
                     this.musicBtn.setColor("#ff0000");
                     this.isMusicPlaying = false;
+                    this.registry.set('musicEnabled', false); // Save State
                 } else {
                     this.bgMusic.play();
                     this.musicBtn.setText("♫ ON");
                     this.musicBtn.setColor("#00ff00");
                     this.isMusicPlaying = true;
+                    this.registry.set('musicEnabled', true); // Save State
                 }
             });
 
