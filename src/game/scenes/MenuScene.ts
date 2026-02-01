@@ -31,9 +31,10 @@ export class MenuScene extends Phaser.Scene {
 
         // Ship Preview
         const ship = this.add.image(DESIGN_WIDTH / 2, DESIGN_HEIGHT * 0.32, "ship");
-        const shipTargetWidth = 80; // Reasonable menu size
-        const shipScale = shipTargetWidth / (ship.width || 512);
-        ship.setScale(shipScale);
+        // Robust scaling for huge textures (native is 4096px)
+        const shipTargetWidth = 80;
+        const shipNativeWidth = ship.width || 512;
+        ship.setScale(shipTargetWidth / shipNativeWidth);
 
         // Simple float animation for menu ship
         this.tweens.add({
