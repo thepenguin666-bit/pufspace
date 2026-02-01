@@ -58,10 +58,11 @@ export class PlayScene extends Phaser.Scene {
     private shields!: Phaser.Physics.Arcade.Group;
     private isShieldActive: boolean = false;
     private shieldTimerEvent?: Phaser.Time.TimerEvent;
-
-
-
-
+    private shieldEffect?: Phaser.GameObjects.Image; // Visual effect
+    private shieldUIContainer!: Phaser.GameObjects.Container;
+    private shieldUIBarFill!: Phaser.GameObjects.Graphics;
+    private shieldTimer: number = 0;
+    private maxShieldTime: number = 10000;
     // Cryptonic Sam Boss
     private boss!: Phaser.Physics.Arcade.Image;
     private bossHealth: number = 250;
@@ -529,21 +530,29 @@ export class PlayScene extends Phaser.Scene {
                 }
             });
 
-        // UI: Power-up Timer (Top Right)
-        this.boostUIContainer = this.add.container(DESIGN_WIDTH - 120, 40).setDepth(150).setVisible(false);
+        this.shields = this.physics.add.group();
+        this.scheduleNextShield();
 
-        const uiIcon = this.add.image(-15, 0, "boost").setScale(0.1);
-        const uiBarBG = this.add.rectangle(10, 0, 80, 10, 0x000000, 0.5).setOrigin(0, 0.5);
+        // UI: Boost Timer Bar (Top Right)
+        this.boostUIContainer = this.add.container(DESIGN_WIDTH - 100, 40).setDepth(100).setVisible(false);
+        const boostIcon = this.add.image(0, 0, "boost").setScale(0.15).setOrigin(0.5);
+        const boostBarBG = this.add.rectangle(10, 0, 80, 10, 0x000000).setOrigin(0, 0.5);
         this.boostUIBarFill = this.add.graphics();
+        this.boostUIContainer.add([boostBarBG, this.boostUIBarFill, boostIcon]);
 
-        this.boostUIContainer.add([uiIcon, uiBarBG, this.boostUIBarFill]);
-
-        // UI: Triple Shot Timer
-        this.tripleShotUIContainer = this.add.container(DESIGN_WIDTH - 120, 80).setDepth(150).setVisible(false); // Default posY below boost
-        const tsIcon = this.add.image(-15, 0, "tripleshot").setScale(0.033);
-        const tsBarBG = this.add.rectangle(10, 0, 80, 10, 0x000000, 0.5).setOrigin(0, 0.5);
+        // UI: Triple Shot Timer Bar (Stacked)
+        this.tripleShotUIContainer = this.add.container(DESIGN_WIDTH - 100, 80).setDepth(100).setVisible(false);
+        const tripleIcon = this.add.image(0, 0, "tripleshot").setScale(0.02).setOrigin(0.5);
+        const tripleBarBG = this.add.rectangle(10, 0, 80, 10, 0x000000).setOrigin(0, 0.5);
         this.tripleShotUIBarFill = this.add.graphics();
-        this.tripleShotUIContainer.add([tsIcon, tsBarBG, this.tripleShotUIBarFill]);
+        this.tripleShotUIContainer.add([tripleBarBG, this.tripleShotUIBarFill, tripleIcon]);
+
+        // UI: Shield Timer Bar (Stacked)
+        this.shieldUIContainer = this.add.container(DESIGN_WIDTH - 100, 120).setDepth(100).setVisible(false);
+        const shieldIcon = this.add.image(0, 0, "shield").setScale(0.08).setOrigin(0.5);
+        const shieldBarBG = this.add.rectangle(10, 0, 80, 10, 0x000000).setOrigin(0, 0.5);
+        this.shieldUIBarFill = this.add.graphics();
+        this.shieldUIContainer.add([shieldBarBG, this.shieldUIBarFill, shieldIcon]);
 
 
         // Physics: Ship vs Bats/Ghosts
@@ -586,9 +595,6 @@ export class PlayScene extends Phaser.Scene {
             (item as Phaser.Physics.Arcade.Image).destroy();
             this.activateShield();
         });
-
-        // Start Shield Schedule
-        this.scheduleNextShield();
 
 
         // Physics: Enemy vs Enemy (Bats and Ghosts)
@@ -861,6 +867,43 @@ export class PlayScene extends Phaser.Scene {
             if (this.tripleShotTimer <= 0) {
                 this.isTripleShotActive = false;
                 this.tripleShotUIContainer.setVisible(false);
+            }
+        }
+
+        // Shield Timer & Stacking
+        if (this.isShieldActive) {
+            this.shieldTimer -= dt;
+
+            // Update UI Bar
+            this.shieldUIBarFill.clear();
+            const fillW = Math.max(0, (this.shieldTimer / this.maxShieldTime) * 80);
+            this.shieldUIBarFill.fillStyle(0xffff00, 1); // Yellow for Shield
+            this.shieldUIBarFill.fillRect(10, -5, fillW, 10);
+
+            // Stacking Logic:
+            // 1. Boost (Always Top: 40)
+            // 2. TripleShot (If Boost: 80, Else: 40)
+            // 3. Shield (Depends on previous two)
+
+            let shieldY = 40;
+            if (this.isBoostActive) shieldY += 40;
+            if (this.isTripleShotActive) shieldY += 40;
+
+            this.shieldUIContainer.setY(shieldY);
+
+
+            // Check Expiration
+            if (this.shieldTimer <= 0) {
+                this.isShieldActive = false;
+                this.shieldUIContainer.setVisible(false);
+
+                // Cleanup Visuals
+                if (this.shieldEffect) {
+                    this.shieldEffect.destroy();
+                    this.shieldEffect = undefined;
+                }
+                if ((this.ship as any).preFX) (this.ship as any).preFX.clear();
+                this.ship.clearTint();
             }
         }
 
@@ -1491,7 +1534,7 @@ export class PlayScene extends Phaser.Scene {
         laser.setScale(1.0, 2.2);
 
         const rad = Phaser.Math.DegToRad(angleDeg);
-        const speed = 400;
+        const speed = 225; // Tuned: Middle ground between fast and slow
         laser.setVelocity(Math.cos(rad) * speed, Math.sin(rad) * speed);
         laser.setRotation(rad + Math.PI / 2);
         laser.setDepth(12);
@@ -1810,8 +1853,8 @@ export class PlayScene extends Phaser.Scene {
     scheduleNextShield() {
         if (this.isGameOver) return;
 
-        // Fixed Delay: Every 15 seconds as requested
-        const delay = 15000;
+        // Fixed Delay: Every 35 seconds
+        const delay = 35000;
 
         this.time.delayedCall(delay, () => {
             if (this.isGameOver) return;
@@ -1840,43 +1883,25 @@ export class PlayScene extends Phaser.Scene {
     }
 
     activateShield() {
-        if (this.isShieldActive) {
-            // Extend timer? Remove old one first
-            if (this.shieldTimerEvent) {
-                this.shieldTimerEvent.remove(false);
-            }
-            // Remove old visual if exists (to reset or avoid dupe)
-            if (this.shieldEffect) this.shieldEffect.destroy();
-        }
-
+        // Reset Logic
         this.isShieldActive = true;
+        this.shieldTimer = this.maxShieldTime; // Refill Timer
+        this.shieldUIContainer.setVisible(true);
+
+        // Remove old visual if exists
+        if (this.shieldEffect) this.shieldEffect.destroy();
 
         // Visual: Create Shield Effect attached to Ship
         this.shieldEffect = this.add.image(this.ship.x, this.ship.y, "shield-fx");
         this.shieldEffect.setDepth(this.ship.depth + 1); // Above ship
-        this.shieldEffect.setScale(1); // Adjust if needed, assuming 1:1 fits
+        this.shieldEffect.setScale(0.25); // Reduced again as requested
 
         // Yellow Glow Effect on Ship (Keep as secondary visual)
-        // Assuming PostFX pipeline support or preFX (Phaser 3.60+)
-        // If preFX is available on the Image
         if ((this.ship as any).preFX) {
             (this.ship as any).preFX.clear();
             (this.ship as any).preFX.addGlow(0xffff00, 4, 0, false, 0.1, 10);
         } else {
             this.ship.setTint(0xffff00);
         }
-
-        // Immunity for 10 seconds
-        this.shieldTimerEvent = this.time.delayedCall(10000, () => {
-            this.isShieldActive = false;
-
-            // Clear FX
-            if (this.shieldEffect) {
-                this.shieldEffect.destroy();
-                this.shieldEffect = undefined;
-            }
-            if ((this.ship as any).preFX) (this.ship as any).preFX.clear();
-            this.ship.clearTint();
-        });
     }
 }
