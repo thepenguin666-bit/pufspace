@@ -29,6 +29,22 @@ export class MenuScene extends Phaser.Scene {
             align: "center"
         }).setOrigin(0.5);
 
+        // Ship Preview
+        const ship = this.add.image(DESIGN_WIDTH / 2, DESIGN_HEIGHT * 0.32, "ship");
+        const shipTargetWidth = 80; // Reasonable menu size
+        const shipScale = shipTargetWidth / (ship.width || 512);
+        ship.setScale(shipScale);
+
+        // Simple float animation for menu ship
+        this.tweens.add({
+            targets: ship,
+            y: (DESIGN_HEIGHT * 0.32) - 10,
+            duration: 1500,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.easeInOut"
+        });
+
         // Controls Section
         const controlsY = DESIGN_HEIGHT * 0.45;
         this.add.text(DESIGN_WIDTH / 2, controlsY - 40, "CONTROLS", {
