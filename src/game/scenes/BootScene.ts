@@ -45,7 +45,7 @@ export class BootScene extends Phaser.Scene {
         // Assets - Using static version to encourage caching
         const version = "1.0.3";
         this.load.image("background", "/1.png?v=" + version);
-        this.load.image("ship", "/mark 1.svg?v=" + version);
+        this.load.svg("ship", "/mark 1.svg?v=" + version, { width: 512, height: 512 });
         this.load.spritesheet("bat", "/bat.png?v=" + version, {
             frameWidth: 317,
             frameHeight: 319

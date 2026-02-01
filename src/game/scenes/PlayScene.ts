@@ -196,11 +196,16 @@ export class PlayScene extends Phaser.Scene {
         }).setDepth(11);
 
         this.ship = this.physics.add.image(DESIGN_WIDTH / 2, DESIGN_HEIGHT * 0.7, "ship");
+        // Robust Scaling Logic
         const targetWidth = 120;
-        if (this.ship.width > 0) {
-            this.ship.setScale(targetWidth / this.ship.width);
+        // Default to a reasonable size if texture isn't ready (512 is the assumed SVG size)
+        const textureWidth = this.ship.width > 0 ? this.ship.width : 512;
+
+        if (textureWidth > 0) {
+            this.ship.setScale(targetWidth / textureWidth);
         } else {
-            this.ship.setScale(0.1);
+            // Absolute fallback
+            this.ship.setScale(0.2);
         }
 
         this.ship.setCollideWorldBounds(true);

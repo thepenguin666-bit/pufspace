@@ -17,7 +17,7 @@ export const config: Phaser.Types.Core.GameConfig = {
     },
     scale: {
         mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH,
+        // autoCenter: Phaser.Scale.CENTER_BOTH, // Removed to let Flexbox handle centering
     },
     parent: "game-container",
     backgroundColor: "#111",
