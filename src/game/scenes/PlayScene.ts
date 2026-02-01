@@ -20,6 +20,7 @@ export class PlayScene extends Phaser.Scene {
     private gameOverText!: Phaser.GameObjects.Text;
     private restartButton!: Phaser.GameObjects.Text;
     private isGameOver: boolean = false;
+    private isTipActive: boolean = false;
     private isPaused: boolean = false;
     private pauseOverlay!: Phaser.GameObjects.Rectangle;
     private pauseText!: Phaser.GameObjects.Text;
@@ -593,26 +594,28 @@ export class PlayScene extends Phaser.Scene {
         // Physics: Ship vs Boost
         this.physics.add.overlap(this.ship, this.boosts, (ship, boost) => {
             (boost as Phaser.Physics.Arcade.Image).destroy();
-            this.activateBoost();
+            this.checkAndShowTutorial(() => this.activateBoost());
         });
 
         // Physics: Ship vs Triple Shot
         this.physics.add.overlap(this.ship, this.tripleShots, (ship, item) => {
             (item as Phaser.Physics.Arcade.Image).destroy();
-            this.activateTripleShot();
+            this.checkAndShowTutorial(() => this.activateTripleShot());
         });
 
         // Physics: Ship vs Heal
         this.physics.add.overlap(this.ship, this.heals, (ship, item) => {
             (item as Phaser.Physics.Arcade.Image).destroy();
-            this.health = Math.min(this.health + 5, 10);
-            this.updateHpBar();
+            this.checkAndShowTutorial(() => {
+                this.health = Math.min(this.health + 5, 10);
+                this.updateHpBar();
+            });
         });
 
         // Physics: Ship vs Shield
         this.physics.add.overlap(this.ship, this.shields, (ship, item) => {
             (item as Phaser.Physics.Arcade.Image).destroy();
-            this.activateShield();
+            this.checkAndShowTutorial(() => this.activateShield());
         });
 
 
@@ -745,6 +748,160 @@ export class PlayScene extends Phaser.Scene {
         });
     }
 
+    checkAndShowTutorial(onResume: () => void) {
+        const seen = this.registry.get("tutorial_seen");
+
+        if (seen) {
+            onResume();
+            return;
+        }
+
+        // Mark as seen globally
+        this.registry.set("tutorial_seen", true);
+
+        // Pause Game
+        this.isTipActive = true;
+        this.physics.pause();
+
+        // Tutorial Data
+        const pages = [
+            { id: "boost", title: "Boost Effect!", desc: "Limitless stamina & fast shooting for 5s." },
+            { id: "tripleshot", title: "Triple Shot!", desc: "Shoots 3 projectiles covering a wide angle." },
+            { id: "heal", title: "Repair Kit!", desc: "Restores 50% health instantly." },
+            { id: "shield", title: "Shield!", desc: "Grants invulnerability for 15s." }
+        ];
+
+        let currentPage = 0;
+
+        // Create Overlay
+        const overlay = this.add.container(0, 0).setDepth(2000).setScrollFactor(0);
+
+        // Dark Background
+        const bg = this.add.rectangle(DESIGN_WIDTH / 2, DESIGN_HEIGHT / 2, DESIGN_WIDTH, DESIGN_HEIGHT, 0x000000, 0.9)
+            .setInteractive();
+
+        // Box - Taller
+        const boxHeight = DESIGN_HEIGHT * 0.7;
+        const box = this.add.rectangle(DESIGN_WIDTH / 2, DESIGN_HEIGHT / 2, DESIGN_WIDTH * 0.85, boxHeight, 0x1a1a2e)
+            .setStrokeStyle(4, 0xFFF825);
+
+        // Header: "TIPS"
+        const headerText = this.add.text(DESIGN_WIDTH / 2, (DESIGN_HEIGHT / 2) - (boxHeight * 0.42), "TIPS", {
+            fontSize: "24px",
+            fontFamily: '"Press Start 2P"',
+            color: "#FFF825",
+            align: "center"
+        }).setOrigin(0.5);
+
+        // Sub-Header: "POWER UPS"
+        const subHeaderText = this.add.text(DESIGN_WIDTH / 2, (DESIGN_HEIGHT / 2) - (boxHeight * 0.35), "POWER UPS", {
+            fontSize: "16px",
+            fontFamily: '"Press Start 2P"',
+            color: "#ffffff",
+            align: "center"
+        }).setOrigin(0.5);
+
+        // Icons Row
+        const iconY = (DESIGN_HEIGHT / 2) - (boxHeight * 0.22);
+        const iconContainer = this.add.container(0, 0);
+
+        // Helper to refresh content
+        const updateContent = () => {
+            // Icon Row
+            iconContainer.removeAll(true);
+            const startX = (DESIGN_WIDTH / 2) - 90;
+            const gap = 60;
+
+            pages.forEach((page, index) => {
+                const x = startX + (index * gap);
+
+                // Highlight current page icon
+                const scale = index === currentPage ? 0.24 : 0.15; // Tripled from 0.08/0.05
+                const alpha = index === currentPage ? 1 : 0.5;
+                const tint = index === currentPage ? 0xffffff : 0x888888;
+
+                // Adjust scale for specific assets
+                let finalScale = scale;
+
+                // Boost: Increase by 2.5x per request (relative to previous shrink)
+                // Previous was ~0.1. New target is ~0.25 (which is close to original base scale)
+                if (page.id === 'boost') finalScale = ((index === currentPage ? 0.36 : 0.24) * 0.3) * 2.5;
+
+                // TripleShot: existing logic
+                if (page.id === 'tripleshot') finalScale = index === currentPage ? 0.09 : 0.06;
+
+                // Heal: Triple size
+                if (page.id === 'heal') finalScale = scale * 3;
+
+                // Shield: Increase by 30% (1.3x)
+                if (page.id === 'shield') finalScale = scale * 1.3;
+
+                const icon = this.add.image(x, iconY, page.id)
+                    .setScale(finalScale)
+                    .setAlpha(alpha)
+                    .setTint(tint)
+                    .setOrigin(0.5);
+
+                iconContainer.add(icon);
+            });
+
+            // Text Content
+            titleText.setText(pages[currentPage].title);
+            descText.setText(pages[currentPage].desc);
+        };
+
+        // Title Area
+        const titleText = this.add.text(DESIGN_WIDTH / 2, (DESIGN_HEIGHT / 2) - (boxHeight * 0.05), "", {
+            fontSize: "20px",
+            fontFamily: '"Press Start 2P"',
+            color: "#FFF825",
+            align: "center"
+        }).setOrigin(0.5);
+
+        // Desc Area
+        const descText = this.add.text(DESIGN_WIDTH / 2, (DESIGN_HEIGHT / 2) + (boxHeight * 0.1), "", {
+            fontSize: "14px",
+            fontFamily: '"Press Start 2P"',
+            color: "#cccccc",
+            align: "center",
+            wordWrap: { width: DESIGN_WIDTH * 0.75 },
+            lineSpacing: 8
+        }).setOrigin(0.5);
+
+        // Next Button (Right Arrow)
+        const arrowBtn = this.add.text(DESIGN_WIDTH / 2 + 100, (DESIGN_HEIGHT / 2) + (boxHeight * 0.25), "➡️", {
+            fontSize: "40px"
+        }).setOrigin(0.5).setInteractive();
+
+        arrowBtn.on('pointerdown', () => {
+            currentPage = (currentPage + 1) % pages.length;
+            updateContent();
+        });
+
+        // Skip/Resume Button (Fixed at Bottom)
+        const skipBtn = this.add.container(DESIGN_WIDTH / 2, (DESIGN_HEIGHT / 2) + (boxHeight * 0.4));
+        const skipBg = this.add.rectangle(0, 0, 260, 40, 0x333333).setInteractive(); // Darker grey
+        const skipTxt = this.add.text(0, 0, "Skip Tips", {
+            fontSize: "12px",
+            fontFamily: '"Press Start 2P"',
+            color: "#ffffff"
+        }).setOrigin(0.5);
+        skipBtn.add([skipBg, skipTxt]);
+
+        skipBg.on('pointerdown', () => {
+            this.registry.set("tutorial_seen", true); // Ensure set
+            this.isTipActive = false;
+            this.physics.resume();
+            overlay.destroy();
+            onResume();
+        });
+
+        overlay.add([bg, box, headerText, subHeaderText, iconContainer, titleText, descText, arrowBtn, skipBtn]);
+
+        // Initialize
+        updateContent();
+    }
+
     handlePlayerHit(enemy: Phaser.GameObjects.GameObject, shouldDestroy: boolean = true) {
         if (this.isGameOver || this.isInvulnerable || this.isShieldActive) return;
 
@@ -838,7 +995,7 @@ export class PlayScene extends Phaser.Scene {
             }
         }
 
-        if (this.isGameOver || this.isPaused) return;
+        if (this.isGameOver || this.isPaused || this.isTipActive) return;
 
         if (this.bossState !== "HIDDEN") {
             this.updateBoss(time, dt);
