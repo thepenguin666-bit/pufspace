@@ -1237,12 +1237,19 @@ export class PlayScene extends Phaser.Scene {
             // Apply Velocity
             if (inputX !== 0 || inputY !== 0) {
                 const vec = new Phaser.Math.Vector2(inputX, inputY);
-                // If using keyboard, length determines speed (normalize it)
-                // If joystick, it's already 0-1 (analog speed control) or we force max speed
-                // User asked for directional precision, usually implies full speed 360.
+                // Analog Control:
+                // normalize() makes it length 1.
+                // scale(speed) makes it speed length.
+                // This preserves the exact angle from the joystick.
                 vec.normalize().scale(speed);
                 vel.copy(vec);
             }
+
+            // Visual Banking (Rotation based on Side Movement)
+            // Banks slightly left/right when moving horizontally
+            // Max bank angle: 15 degrees (approx 0.26 rad)
+            const targetRotation = (vel.x / speed) * 0.26;
+            this.ship.setRotation(Phaser.Math.Linear(this.ship.rotation, targetRotation, 0.1));
 
             const shipHalfH = this.ship.displayHeight / 2;
             const playableHeight = DESIGN_HEIGHT - 150;
@@ -1293,7 +1300,8 @@ export class PlayScene extends Phaser.Scene {
             body.setVelocity(vel.x, vel.y);
             this.ship.setDepth(1000);
         }
-        this.ship.setRotation(0);
+        // Removed explicit setRotation(0) to allow banking
+        // this.ship.setRotation(0);
 
         // GLOBAL SCREEN BOUNDARIES (Manual Clamp because WorldCollision excludes Top/Bottom for enemies)
         const shipHalfH = this.ship.displayHeight / 2;
