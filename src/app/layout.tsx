@@ -13,7 +13,7 @@ export default function RootLayout({
             <head>
                 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
             </head>
-            <body style={{ margin: 0, padding: 0, overflow: 'hidden' }}>{children}</body>
+            <body style={{ margin: 0, padding: 0, overflow: 'hidden', backgroundColor: '#000', height: '100dvh' }}>{children}</body>
         </html>
     )
 }
