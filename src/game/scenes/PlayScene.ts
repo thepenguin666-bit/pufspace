@@ -502,14 +502,26 @@ export class PlayScene extends Phaser.Scene {
         // Audio Setup
         this.bgMusic = this.sound.add("music", { loop: true, volume: 0.5 });
 
-        this.bgMusic = this.sound.add("music", { loop: true, volume: 0.5 });
+        // Music Persistence Logic
+        const storedMusicState = this.registry.get('musicEnabled');
+        if (storedMusicState === undefined) {
+            // Default: ON
+            this.isMusicPlaying = true;
+            this.registry.set('musicEnabled', true);
+        } else {
+            this.isMusicPlaying = storedMusicState;
+        }
+
+        if (this.isMusicPlaying) {
+            this.bgMusic.play();
+        }
 
         // Music Toggle Button (Bottom Center, below Pause)
         const musicY = DESIGN_HEIGHT - 55;
-        this.musicBtn = this.add.text(DESIGN_WIDTH / 2, musicY, "♫ OFF", {
+        this.musicBtn = this.add.text(DESIGN_WIDTH / 2, musicY, this.isMusicPlaying ? "♫ ON" : "♫ OFF", {
             fontSize: "16px",
             fontFamily: '"Press Start 2P"',
-            color: "#ff0000", // Red for OFF
+            color: this.isMusicPlaying ? "#00ff00" : "#ff0000",
             backgroundColor: "#000000",
             padding: { x: 5, y: 5 }
         })
@@ -522,11 +534,13 @@ export class PlayScene extends Phaser.Scene {
                     this.musicBtn.setText("♫ OFF");
                     this.musicBtn.setColor("#ff0000");
                     this.isMusicPlaying = false;
+                    this.registry.set('musicEnabled', false); // Save State
                 } else {
                     this.bgMusic.play();
                     this.musicBtn.setText("♫ ON");
                     this.musicBtn.setColor("#00ff00"); // Green for ON
                     this.isMusicPlaying = true;
+                    this.registry.set('musicEnabled', true); // Save State
                 }
             });
 
@@ -1894,7 +1908,12 @@ export class PlayScene extends Phaser.Scene {
         // Visual: Create Shield Effect attached to Ship
         this.shieldEffect = this.add.image(this.ship.x, this.ship.y, "shield-fx");
         this.shieldEffect.setDepth(this.ship.depth + 1); // Above ship
-        this.shieldEffect.setScale(0.25); // Reduced again as requested
+
+        // Scale relative to ship (Mobile fix)
+        // Previous fixed scale 0.25 was too big on mobile.
+        // Ship is scaled to typical width ~120px. 
+        // We want shield to be slightly larger than ship.
+        this.shieldEffect.setScale(this.ship.scaleX * 0.8);
 
         // Yellow Glow Effect on Ship (Keep as secondary visual)
         if ((this.ship as any).preFX) {
