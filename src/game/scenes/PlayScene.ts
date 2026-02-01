@@ -98,6 +98,7 @@ export class PlayScene extends Phaser.Scene {
     // Audio
     private bgMusic!: Phaser.Sound.BaseSound;
     private shootSound!: Phaser.Sound.BaseSound;
+    private bossEntrySound!: Phaser.Sound.BaseSound;
     private musicBtn!: Phaser.GameObjects.Text;
     private isMusicPlaying: boolean = false;
     private bossScaleFactor: number = 1;
@@ -505,6 +506,9 @@ export class PlayScene extends Phaser.Scene {
         // Audio Setup
         if (this.cache.audio.exists("shoot")) {
             this.shootSound = this.sound.add("shoot", { volume: 0.5 });
+        }
+        if (this.cache.audio.exists("bossEntry")) {
+            this.bossEntrySound = this.sound.add("bossEntry", { volume: 0.8 });
         }
         this.bgMusic = this.sound.add("music", { loop: true, volume: 0.3 });
 
@@ -1420,6 +1424,11 @@ export class PlayScene extends Phaser.Scene {
         // Reset health to max when spawning
         this.bossHealth = this.bossMaxHealth;
         this.isBossEnraged = false;
+
+        // Play Boss Entry Sound (if music enabled)
+        if (this.isMusicPlaying && this.bossEntrySound) {
+            this.bossEntrySound.play();
+        }
 
         // Create Boss Sprite (Off-screen BOTTOM)
         this.boss = this.physics.add.image(DESIGN_WIDTH / 2, DESIGN_HEIGHT + 150, "boss");
