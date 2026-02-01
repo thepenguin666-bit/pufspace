@@ -1398,7 +1398,7 @@ export class PlayScene extends Phaser.Scene {
         if (currentHealth === undefined || currentHealth === null) currentHealth = 50;
 
         currentHealth -= 1; // Damage Value (Reduced to 1 as requested)
-        if (currentHealth <= 150 && !this.isBossEnraged) {
+        if (currentHealth <= 200 && !this.isBossEnraged) {
             this.isBossEnraged = true;
             this.spawnBossBatVomit();
             // Start recurring timer
