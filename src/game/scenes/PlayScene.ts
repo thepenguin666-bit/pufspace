@@ -15,7 +15,7 @@ export class PlayScene extends Phaser.Scene {
     // private healthText!: Phaser.GameObjects.Text; // Removed
     private hpBarFrame!: Phaser.GameObjects.Image;
     private hpBarFill!: Phaser.GameObjects.Graphics;
-    private maxHealth: number = 10;
+    private maxHealth: number = 5;
 
     private gameOverText!: Phaser.GameObjects.Text;
     private restartButton!: Phaser.GameObjects.Text;
@@ -63,7 +63,7 @@ export class PlayScene extends Phaser.Scene {
     private shieldUIContainer!: Phaser.GameObjects.Container;
     private shieldUIBarFill!: Phaser.GameObjects.Graphics;
     private shieldTimer: number = 0;
-    private maxShieldTime: number = 10000;
+    private maxShieldTime: number = 7000;
     // Cryptonic Sam Boss
     private boss!: Phaser.Physics.Arcade.Image;
     private bossHealth: number = 250;
@@ -607,7 +607,7 @@ export class PlayScene extends Phaser.Scene {
         this.physics.add.overlap(this.ship, this.heals, (ship, item) => {
             (item as Phaser.Physics.Arcade.Image).destroy();
             this.checkAndShowTutorial(() => {
-                this.health = Math.min(this.health + 5, 10);
+                this.health = Math.min(this.health + 5, this.maxHealth);
                 this.updateHpBar();
             });
         });
@@ -767,8 +767,8 @@ export class PlayScene extends Phaser.Scene {
         const pages = [
             { id: "boost", title: "Boost Effect!", desc: "Limitless stamina & fast shooting for 5s." },
             { id: "tripleshot", title: "Triple Shot!", desc: "Shoots 3 projectiles covering a wide angle." },
-            { id: "heal", title: "Repair Kit!", desc: "Restores 50% health instantly." },
-            { id: "shield", title: "Shield!", desc: "Grants invulnerability for 15s." }
+            { id: "heal", title: "Repair Kit!", desc: "Restores 100% health instantly." },
+            { id: "shield", title: "Shield!", desc: "Grants invulnerability for 7s." }
         ];
 
         let currentPage = 0;
@@ -1388,10 +1388,17 @@ export class PlayScene extends Phaser.Scene {
                 }
 
                 // Gravity Rotation Logic
-                // Only for "pipe attack" lasers which have gravity enabled
-                const body = child.body as Phaser.Physics.Arcade.Body;
-                if (body && body.allowGravity) {
-                    child.rotation = Math.atan2(body.velocity.y, body.velocity.x) + Math.PI / 2;
+                // Gravity Rotation Logic
+                // Only for "omuzprojectile" (shoulder rockets) which have gravity enabled and need custom rotation
+                if (child.texture.key === "omuzprojectile") {
+                    const body = child.body as Phaser.Physics.Arcade.Body;
+                    if (body) {
+                        // Target angle based on velocity
+                        const targetRotation = Math.atan2(body.velocity.y, body.velocity.x);
+                        // Eased rotation: Interp current to target
+                        // Use Angle.RotateTo or simple lerp
+                        child.rotation = Phaser.Math.Angle.RotateTo(child.rotation, targetRotation, 0.1);
+                    }
                 }
             }
         }
@@ -1648,18 +1655,27 @@ export class PlayScene extends Phaser.Scene {
     }
 
     fireGravityLaser(x: number, y: number, velocityX: number) {
-        const laser = this.bossLasers.create(x, y, "projectile") as Phaser.Physics.Arcade.Image;
-        laser.setTint(0xff0000); // Red for danger
-        laser.setScale(1.5); // Slightly larger
-        laser.setDepth(20); // Ensure it's above Boss BG (depth 1) and Boss (depth 5)
+        // Use new asset "omuzprojectile"
+        const laser = this.bossLasers.create(x, y, "omuzprojectile") as Phaser.Physics.Arcade.Image;
+        laser.setTint(0xffffff); // Remove red tint to show original colors
+        laser.setScale(0.75); // Half size (was 1.5)
+        laser.setDepth(20);
 
         // Initial Velocity: Up and Out
-        laser.setVelocity(velocityX, -400);
+        // Reduce Horizontal Velocity for sharper turn (User Request)
+        // Reduce Upward Velocity slightly so it doesn't fly too high before turning
+        laser.setVelocity(velocityX * 0.6, -300);
+
+        // Initial Rotation:
+        // User said: "Imagine it faces Right. Turn it to face Up to start."
+        // Moving Up (-300) and Out (velX) means angle is roughly -90.
+        const rad = Math.atan2(-300, velocityX * 0.6);
+        laser.setRotation(rad);
 
         // Rocket Trail Effect
         const emitter = this.add.particles(0, 0, "debris", {
             speed: 50,
-            scale: { start: 0.5, end: 0 },
+            scale: { start: 0.3, end: 0 }, // Scaled down trail
             alpha: { start: 0.5, end: 0 },
             lifespan: 400,
             frequency: 50,
@@ -1677,10 +1693,10 @@ export class PlayScene extends Phaser.Scene {
         });
 
         // Gravity to pull it down (U-Turn effect)
-        // Ensure the body allows gravity
+        // Increase Gravity significantly for sharper U-turn (User Request)
         if (laser.body) {
             (laser.body as Phaser.Physics.Arcade.Body).setAllowGravity(true);
-            (laser.body as Phaser.Physics.Arcade.Body).setGravityY(800);
+            (laser.body as Phaser.Physics.Arcade.Body).setGravityY(700);
         }
     }
 
@@ -1946,7 +1962,9 @@ export class PlayScene extends Phaser.Scene {
     }
 
     spawnBoost() {
-        const x = Phaser.Math.Between(50, DESIGN_WIDTH - 50);
+        const x = this.getValidSpawnX();
+        if (x === null) return; // Skip if no space
+
         const boost = this.boosts.create(x, -50, "boost") as Phaser.Physics.Arcade.Image;
         boost.setScale(0.3);
         boost.setVelocityY(150);
@@ -1977,7 +1995,9 @@ export class PlayScene extends Phaser.Scene {
     }
 
     spawnTripleShot() {
-        const x = Phaser.Math.Between(50, DESIGN_WIDTH - 50);
+        const x = this.getValidSpawnX();
+        if (x === null) return;
+
         const item = this.tripleShots.create(x, -50, "tripleshot") as Phaser.Physics.Arcade.Image;
         item.setScale(0.06);
         item.setVelocityY(150);
@@ -2008,7 +2028,9 @@ export class PlayScene extends Phaser.Scene {
     }
 
     spawnHeal() {
-        const x = Phaser.Math.Between(50, DESIGN_WIDTH - 50);
+        const x = this.getValidSpawnX();
+        if (x === null) return;
+
         const item = this.heals.create(x, -50, "heal") as Phaser.Physics.Arcade.Image;
         item.setScale(0.45);
         item.setVelocityY(150);
@@ -2040,7 +2062,9 @@ export class PlayScene extends Phaser.Scene {
     }
 
     spawnShield() {
-        const x = Phaser.Math.Between(50, DESIGN_WIDTH - 50);
+        const x = this.getValidSpawnX();
+        if (x === null) return;
+
         const item = this.shields.create(x, -50, "shield") as Phaser.Physics.Arcade.Image;
         // 1.5x bigger (0.15 * 1.5 = 0.225)
         item.setScale(0.225);
@@ -2056,6 +2080,33 @@ export class PlayScene extends Phaser.Scene {
             repeat: -1,
             ease: "Sine.easeInOut"
         });
+    }
+
+    getValidSpawnX(padding: number = 80): number | null {
+        const attempts = 15;
+        for (let i = 0; i < attempts; i++) {
+            const x = Phaser.Math.Between(50, DESIGN_WIDTH - 50);
+            let safe = true;
+
+            // Check against all powerup groups
+            const groups = [this.boosts, this.tripleShots, this.heals, this.shields];
+            for (const group of groups) {
+                const children = group.getChildren() as Phaser.Physics.Arcade.Image[];
+                for (const child of children) {
+                    if (child.active) {
+                        // Only care if they are near the top (spawning area) - < 150px
+                        if (child.y < 150 && Math.abs(child.x - x) < padding) {
+                            safe = false;
+                            break;
+                        }
+                    }
+                }
+                if (!safe) break;
+            }
+
+            if (safe) return x;
+        }
+        return null; // Could not find a spot (Screen crowded)
     }
 
     activateShield() {
