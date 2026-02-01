@@ -97,6 +97,7 @@ export class PlayScene extends Phaser.Scene {
 
     // Audio
     private bgMusic!: Phaser.Sound.BaseSound;
+    private shootSound!: Phaser.Sound.BaseSound;
     private musicBtn!: Phaser.GameObjects.Text;
     private isMusicPlaying: boolean = false;
     private bossScaleFactor: number = 1;
@@ -501,7 +502,11 @@ export class PlayScene extends Phaser.Scene {
             });
 
         // Audio Setup
-        this.bgMusic = this.sound.add("music", { loop: true, volume: 0.5 });
+        // Audio Setup
+        if (this.cache.audio.exists("shoot")) {
+            this.shootSound = this.sound.add("shoot", { volume: 0.5 });
+        }
+        this.bgMusic = this.sound.add("music", { loop: true, volume: 0.3 });
 
         // Music Persistence Logic
         const storedMusicState = this.registry.get('musicEnabled');
@@ -1088,6 +1093,11 @@ export class PlayScene extends Phaser.Scene {
 
         if ((this.fireKey && this.fireKey.isDown) || this.isMobileFiring) {
             if (time > this.lastFired && this.stamina >= 1) {
+                // Play Sound if Music is ON and Sound exists
+                if (this.isMusicPlaying && this.shootSound) {
+                    this.shootSound.play();
+                }
+
                 const projectile = this.projectiles.create(this.ship.x, this.ship.y - this.ship.displayHeight / 2, 'projectile') as Phaser.Physics.Arcade.Image;
                 if (projectile) {
                     projectile.setVelocityY(-900);

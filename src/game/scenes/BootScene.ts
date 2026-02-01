@@ -69,6 +69,8 @@ export class BootScene extends Phaser.Scene {
         this.load.image("boss-fg", "/7.png?v=" + version);
         this.load.image("vomitboss", "/vomitboss.png?v=" + version);
         this.load.audio("music", "/music..mp3.mp3");
+        this.load.audio("shoot", "/projectile sounda.mp3");
+
     }
 
     create() {
