@@ -43,7 +43,7 @@ export class BootScene extends Phaser.Scene {
         });
 
         // Assets - Using static version to encourage caching
-        const version = "1.0.3";
+        const version = "1.0.4";
         this.load.image("background", "/1.png?v=" + version);
         this.load.svg("ship", "/mark 1.svg?v=" + version, { width: 512, height: 512 });
         this.load.spritesheet("bat", "/bat.png?v=" + version, {
@@ -59,6 +59,8 @@ export class BootScene extends Phaser.Scene {
         this.load.image("boost", "/boost.png?v=" + version);
         this.load.image("tripleshot", "/3shot.svg?v=" + version);
         this.load.image("heal", "/heal.svg?v=" + version);
+        this.load.image("shield", "/shield.png?v=" + version);
+        this.load.image("shield-fx", "/s efect.png?v=" + version);
         this.load.image("boss", "/sam boss.png?v=" + version);
         this.load.image("debris", "/projectile.png?v=" + version); // Re-use projectile as debris
         this.load.image("boss-bg", "/6.png?v=" + version);
