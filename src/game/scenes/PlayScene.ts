@@ -100,6 +100,7 @@ export class PlayScene extends Phaser.Scene {
     private shootSound!: Phaser.Sound.BaseSound;
     private bossEntrySound!: Phaser.Sound.BaseSound;
     private musicBtn!: Phaser.GameObjects.Text;
+    private isGodMode: boolean = false; // Cheat Flag
     private isMusicPlaying: boolean = false;
     private bossScaleFactor: number = 1;
 
@@ -426,6 +427,20 @@ export class PlayScene extends Phaser.Scene {
                 if (this.bossState === "HIDDEN") {
                     this.spawnBoss();
                 }
+            });
+
+        // Debug: Cheat Button (God Mode)
+        const cheatBtn = this.add.text(10, 140, "CHEAT: OFF", {
+            fontSize: '12px',
+            backgroundColor: '#ff0000'
+        })
+            .setDepth(300)
+            .setInteractive({ useHandCursor: true })
+            .on('pointerdown', () => {
+                this.isGodMode = !this.isGodMode;
+                cheatBtn.setText(this.isGodMode ? "CHEAT: ON" : "CHEAT: OFF");
+                cheatBtn.setBackgroundColor(this.isGodMode ? "#00ff00" : "#ff0000");
+                this.ship.setTint(this.isGodMode ? 0x00ff00 : 0xffffff); // Visual Indicator
             });
 
         // UI: Game Over
@@ -912,7 +927,7 @@ export class PlayScene extends Phaser.Scene {
     }
 
     handlePlayerHit(enemy: Phaser.GameObjects.GameObject, shouldDestroy: boolean = true) {
-        if (this.isGameOver || this.isInvulnerable || this.isShieldActive) return;
+        if (this.isGameOver || this.isInvulnerable || this.isShieldActive || this.isGodMode) return;
 
         this.health--;
         this.updateHpBar();
