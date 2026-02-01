@@ -1290,903 +1290,902 @@ export class PlayScene extends Phaser.Scene {
                 });
                 this.lastTrailSpawn = time;
             }
+            body.setVelocity(vel.x, vel.y);
+            this.ship.setDepth(1000);
         }
-        body.setVelocity(vel.x, vel.y);
-        this.ship.setDepth(1000);
-    }
         this.ship.setRotation(0);
 
-// GLOBAL SCREEN BOUNDARIES (Manual Clamp because WorldCollision excludes Top/Bottom for enemies)
-const shipHalfH = this.ship.displayHeight / 2;
-const playableHeight = DESIGN_HEIGHT - 150;
+        // GLOBAL SCREEN BOUNDARIES (Manual Clamp because WorldCollision excludes Top/Bottom for enemies)
+        const shipHalfH = this.ship.displayHeight / 2;
+        const playableHeight = DESIGN_HEIGHT - 150;
 
-// 1. Bottom Limit (Always active, respect Safe Zone)
-if (this.ship.y > playableHeight - shipHalfH) {
-    this.ship.setY(playableHeight - shipHalfH);
-    if (this.ship.body) {
-        (this.ship.body as Phaser.Physics.Arcade.Body).setVelocityY(Math.min(0, (this.ship.body as Phaser.Physics.Arcade.Body).velocity.y));
-    }
-}
-
-// 2. Top Limit (Active when NOT in boss fight - Boss fight has stricter limit above)
-if ((this.bossState === "HIDDEN" || !this.boss || !this.boss.active) && this.ship.y < shipHalfH) {
-    this.ship.setY(shipHalfH);
-    if (this.ship.body) {
-        (this.ship.body as Phaser.Physics.Arcade.Body).setVelocityY(Math.max(0, (this.ship.body as Phaser.Physics.Arcade.Body).velocity.y));
-    }
-} else if (this.bossState !== "HIDDEN") {
-    // 3. Top Limit during Boss Fight
-    // User requested to move it 150px UP from the previous 150px limit.
-    // So basically allow it to go almost to the top.
-    const bossFightTopLimit = 5; // Effectively top of screen
-    if (this.ship.y < bossFightTopLimit + shipHalfH) {
-        this.ship.setY(bossFightTopLimit + shipHalfH);
-        if (this.ship.body) {
-            (this.ship.body as Phaser.Physics.Arcade.Body).setVelocityY(Math.max(0, (this.ship.body as Phaser.Physics.Arcade.Body).velocity.y));
-        }
-    }
-}
-
-const bts = this.bats.getChildren();
-for (let i = bts.length - 1; i >= 0; i--) {
-    const child = bts[i] as Phaser.Physics.Arcade.Sprite;
-    if (child.active) {
-        if (child.y > DESIGN_HEIGHT + 100) {
-            child.destroy();
-            continue;
-        }
-
-        if (child.body) {
-            // Enforce downward movement
-            if (child.body.velocity.y < 0) {
-                child.setVelocityY(Math.max(100, Math.abs(child.body.velocity.y)));
-            }
-            // Cap horizontal speed to prevent erratic bouncing
-            if (Math.abs(child.body.velocity.x) > 200) {
-                child.setVelocityX(200 * Math.sign(child.body.velocity.x));
-            }
-        }
-    }
-}
-
-const ghts = this.ghosts.getChildren();
-for (let i = ghts.length - 1; i >= 0; i--) {
-    const child = ghts[i] as Phaser.Physics.Arcade.Sprite;
-    if (child.active) {
-        if (child.y > DESIGN_HEIGHT + 100) {
-            child.destroy();
-            continue;
-        }
-
-        // Acceleration-based movement (Natural Physics)
-        const swaySpeed = child.getData('swaySpeed') || 0.003;
-        const swayForce = child.getData('swayForce') || 50;
-
-        // Set acceleration based on time (Swaying)
-        const normalAccelX = Math.sin(time * swaySpeed) * swayForce;
-
-        // Soft Boundary Logic
-        const margin = 75;
-        const turnForce = 450;
-
-        if (child.x < margin) {
-            // Left Edge: Slow down if moving left, push right
-            if ((child.body?.velocity.x ?? 0) < 0) child.setDragX(300);
-            child.setAccelerationX(turnForce);
-        } else if (child.x > DESIGN_WIDTH - margin) {
-            // Right Edge: Slow down if moving right, push left
-            if ((child.body?.velocity.x ?? 0) > 0) child.setDragX(300);
-            child.setAccelerationX(-turnForce);
-        } else {
-            // Center: Normal sway
-            child.setDragX(30);
-            child.setAccelerationX(normalAccelX);
-        }
-
-        // Enforce downward movement safety net
-        const maxSpeedY = child.getData('speedY') || 100;
-        if (child.body) {
-            if (child.body.velocity.y < 50) { // If it slows down too much or goes up
-                child.setVelocityY(maxSpeedY);
+        // 1. Bottom Limit (Always active, respect Safe Zone)
+        if (this.ship.y > playableHeight - shipHalfH) {
+            this.ship.setY(playableHeight - shipHalfH);
+            if (this.ship.body) {
+                (this.ship.body as Phaser.Physics.Arcade.Body).setVelocityY(Math.min(0, (this.ship.body as Phaser.Physics.Arcade.Body).velocity.y));
             }
         }
 
-        // Rotation follows velocity
-        const vx = child.body?.velocity.x || 0;
-        const vy = child.body?.velocity.y || 100;
-        const targetAngle = Math.atan2(vy, vx) - Math.PI / 2;
-
-        // Smooth rotation
-        const currentRot = child.rotation;
-        const diff = Phaser.Math.Angle.Wrap(targetAngle - currentRot);
-        child.rotation += diff * 0.1;
-    }
-}
-
-// Boost Cleanup
-const bsts = this.boosts.getChildren();
-for (let i = bsts.length - 1; i >= 0; i--) {
-    const child = bsts[i] as Phaser.Physics.Arcade.Image;
-    if (child.active && child.y > DESIGN_HEIGHT + 50) child.destroy();
-}
-
-// Triple Shot Cleanup
-const tshots = this.tripleShots.getChildren();
-for (let i = tshots.length - 1; i >= 0; i--) {
-    const child = tshots[i] as Phaser.Physics.Arcade.Image;
-    if (child.active && child.y > DESIGN_HEIGHT + 50) child.destroy();
-}
-
-// Heal Cleanup
-const heals = this.heals.getChildren();
-for (let i = heals.length - 1; i >= 0; i--) {
-    const child = heals[i] as Phaser.Physics.Arcade.Image;
-    if (child.active && child.y > DESIGN_HEIGHT + 50) child.destroy();
-}
-
-// Boss Lasers Cleanup & Logic
-const lasers = this.bossLasers.getChildren();
-for (let i = lasers.length - 1; i >= 0; i--) {
-    const child = lasers[i] as Phaser.Physics.Arcade.Image;
-    if (child.active) {
-        // Cleanup off-screen
-        if (child.y > DESIGN_HEIGHT + 100) {
-            child.destroy();
-            continue;
-        }
-
-        // Gravity Rotation Logic
-        // Gravity Rotation Logic
-        // Only for "omuzprojectile" (shoulder rockets) which have gravity enabled and need custom rotation
-        if (child.texture.key === "omuzprojectile") {
-            const body = child.body as Phaser.Physics.Arcade.Body;
-            if (body) {
-                // Target angle based on velocity
-                const targetRotation = Math.atan2(body.velocity.y, body.velocity.x);
-                // Eased rotation: Interp current to target
-                // Use Angle.RotateTo or simple lerp
-                child.rotation = Phaser.Math.Angle.RotateTo(child.rotation, targetRotation, 0.1);
+        // 2. Top Limit (Active when NOT in boss fight - Boss fight has stricter limit above)
+        if ((this.bossState === "HIDDEN" || !this.boss || !this.boss.active) && this.ship.y < shipHalfH) {
+            this.ship.setY(shipHalfH);
+            if (this.ship.body) {
+                (this.ship.body as Phaser.Physics.Arcade.Body).setVelocityY(Math.max(0, (this.ship.body as Phaser.Physics.Arcade.Body).velocity.y));
+            }
+        } else if (this.bossState !== "HIDDEN") {
+            // 3. Top Limit during Boss Fight
+            // User requested to move it 150px UP from the previous 150px limit.
+            // So basically allow it to go almost to the top.
+            const bossFightTopLimit = 5; // Effectively top of screen
+            if (this.ship.y < bossFightTopLimit + shipHalfH) {
+                this.ship.setY(bossFightTopLimit + shipHalfH);
+                if (this.ship.body) {
+                    (this.ship.body as Phaser.Physics.Arcade.Body).setVelocityY(Math.max(0, (this.ship.body as Phaser.Physics.Arcade.Body).velocity.y));
+                }
             }
         }
-    }
-}
-    }
 
-spawnBoss() {
-    if (this.bossState !== "HIDDEN") return;
-    this.bossState = "ENTERING";
-    // Reset health to max when spawning
-    this.bossHealth = this.bossMaxHealth;
-    this.isBossEnraged = false;
-
-    // Play Boss Entry Sound (if music enabled)
-    if (this.isMusicPlaying && this.bossEntrySound) {
-        this.bossEntrySound.play();
-    }
-
-    // Create Boss Sprite (Off-screen BOTTOM)
-    this.boss = this.physics.add.image(DESIGN_WIDTH / 2, DESIGN_HEIGHT + 150, "boss");
-    this.bossGroup.add(this.boss); // Add to Group
-    this.boss.setDepth(5);
-    this.boss.setVisible(true);
-    this.boss.setActive(true);
-    this.boss.setImmovable(true);
-    if (this.boss.body) {
-        this.boss.body.onCollide = true;
-    }
-
-    // Playable Height (Screen - Safe Zone)
-    const safeZoneHeight = 150;
-    const playableHeight = DESIGN_HEIGHT - safeZoneHeight;
-
-    // Global Scaling Ratio (New Height / Old Height)
-    const globalRatio = playableHeight / DESIGN_HEIGHT;
-
-    // Scale to fit width, THEN REDUCE PROPORTIONALLY
-    // Old Logic was: (DESIGN_WIDTH / width) * (2/3)
-    // New Logic: Apply globalRatio to that
-    const targetWidth = DESIGN_WIDTH;
-    let baseScale = (targetWidth / this.boss.width) * (2 / 3);
-    this.bossScaleFactor = baseScale * globalRatio;
-
-    this.boss.setScale(this.bossScaleFactor);
-    this.boss.setOrigin(0.5, 0.5);
-
-    // Auto-Size Hitbox (Reliable with Group)
-    // Auto-Size Hitbox (Reliable with Group)
-    if (this.boss.body) {
-        const body = this.boss.body as Phaser.Physics.Arcade.Body;
-        body.updateFromGameObject();
-        body.setAllowGravity(false);
-        // MANUALLY OFFSET HITBOX UPWARDS
-        // Move hitbox UP by 150px (original) + 40px (visual shift) = 190px
-        // This keeps the hitbox in the SAME world position while the sprite moves down.
-        body.setOffset(0, -190);
-    }
-
-    this.boss.setData('health', this.bossMaxHealth);
-
-    // Create Boss Background (6.png) - Static Layer
-    // FIX: Use DESIGN_HEIGHT to ensure full coverage, not just playable area
-    this.bossBG = this.add.image(DESIGN_WIDTH / 2, playableHeight + (playableHeight / 2), "boss-bg");
-    this.bossBG.setDepth(1);
-    this.bossBG.setTint(0xB2B2B2); // Reduce brightness by 30%
-    this.bossBG.setDisplaySize((DESIGN_WIDTH * 1.2) * globalRatio * 1.5, DESIGN_HEIGHT * 1.5);
-
-    // Create Boss Foreground (7.png) - Animated Tentacles
-    this.bossFG = this.add.image(DESIGN_WIDTH / 2, playableHeight + (playableHeight / 2), "boss-fg");
-    this.bossFG.setDepth(2); // Above BG, Below Boss (Boss is depth 5)
-    this.bossFG.setDisplaySize((DESIGN_WIDTH * 1.2) * globalRatio * 1.5, DESIGN_HEIGHT * 1.5);
-
-    // Register and apply PurpleWavePipeline to Foreground Only
-    const renderer = this.renderer as Phaser.Renderer.WebGL.WebGLRenderer;
-    if (renderer.pipelines && !renderer.pipelines.has('PurpleWavePipeline')) {
-        renderer.pipelines.addPostPipeline('PurpleWavePipeline', PurpleWavePipeline);
-    }
-    this.bossFG.setPostPipeline('PurpleWavePipeline');
-
-    // Move up by 50px (Scaled) -> Then shift DOWN 50px as requested -> Now UP 80px as requested
-    // Original DestY logic: ((this.boss.height * this.bossScaleFactor) / 2) + 30;
-    // Previous Shift: + 80 (Net +50 relative to +30)
-    // New Shift: + 80 - 80 = 0
-    // LATEST REQUEST: Move down 40px visually.
-    const destY = ((this.boss.height * this.bossScaleFactor) / 2) + 40;
-
-    // Tween Boss Entry & Backgrounds Entry (Synchronized)
-    // Backgrounds move to center of playable area
-    this.tweens.add({
-        targets: [this.bossBG],
-        // Previous: Center + 50px
-        // Reverted to: Center + 50
-        y: (playableHeight / 2) + 50,
-        duration: 4000,
-        ease: "Power2"
-    });
-
-    // Boss moves to destY
-    this.tweens.add({
-        targets: [this.boss],
-        y: destY,
-        duration: 4000,
-        ease: "Power2"
-    });
-
-    this.tweens.add({
-        targets: this.bossFG,
-        // Previous: Center + 75
-        // Reverted to: Center + 75
-        y: (playableHeight / 2) + 75,
-        duration: 4000,
-        ease: "Power2"
-    });
-
-    this.tweens.add({
-        targets: this.bossBG,
-        y: playableHeight / 2,
-        duration: 4000,
-        ease: "Power2",
-        onComplete: () => {
-            this.bossState = "FIGHTING";
-            this.bossFightStartTime = this.time.now; // Track start time for smooth sway
-
-            // Init Health Bar & Name - Anchor to Boss
-            // Text over Head
-            this.bossNameText = this.add.text(this.boss.x, this.boss.y - 120, "Cryptonic Sam", {
-                fontSize: "14px",
-                fontFamily: '"Press Start 2P"',
-                color: "#ffffff",
-                stroke: "#000000",
-                strokeThickness: 3
-            }).setOrigin(0.5).setDepth(200);
-
-            const barWidth = 200; // Fixed width relative to boss
-            this.bossHealthBarBG = this.add.rectangle(this.boss.x, this.boss.y - 100, barWidth, 10, 0x000000).setDepth(200);
-            this.bossHealthBarFill = this.add.rectangle(this.boss.x - barWidth / 2, this.boss.y - 100, barWidth, 10, 0xff0000).setDepth(201).setOrigin(0, 0.5);
-
-            // Re-sync hitbox
-            if (this.boss.body) {
-                const body = this.boss.body as Phaser.Physics.Arcade.Body;
-                body.updateFromGameObject();
-            }
-
-            // Start Attack Loop managed by updateBoss -> manageBossAttacks
-        }
-    });
-
-    // ENABLE COLLISION: Ship vs Boss Lasers (Player Damage)
-    this.physics.add.overlap(this.ship, this.bossLasers, (ship, laser) => {
-        this.handlePlayerHit(laser as any, true);
-    });
-
-    // ENABLE COLLISION: Ship vs Boss Body (IMMUNE - No Damage)
-    this.physics.add.overlap(this.ship, this.boss, (ship, boss) => {
-        // Do nothing - Immunity as requested
-    });
-
-    // ENABLE COLLISION: Projectiles vs Boss Lasers (Mutually Destroy)
-    this.physics.add.overlap(this.projectiles, this.bossLasers, (proj, laser) => {
-        this.createExplosion((proj as any).x, (proj as any).y);
-        proj.destroy();
-        laser.destroy();
-    });
-}
-
-updateBoss(time: number, dt: number) {
-    if (!this.boss || !this.boss.active) return;
-
-    if (this.bossState === "FIGHTING") {
-        // Horizontal Sway (Synchronized Boss & Background)
-        // Use relative time so sin starts at 0 (center)
-        const swayX = Math.sin((time - this.bossFightStartTime) * 0.0015) * 40;
-        this.boss.x = DESIGN_WIDTH / 2 + swayX;
-        if (this.bossBG) this.bossBG.x = DESIGN_WIDTH / 2 + swayX;
-        if (this.bossFG) this.bossFG.x = DESIGN_WIDTH / 2 + swayX;
-
-        const currentHealth = this.boss.getData('health') ?? 50;
-        const healthPercent = Phaser.Math.Clamp(currentHealth / this.bossMaxHealth, 0, 1);
-        const barWidth = 200; // Match init width
-
-        if (this.bossHealthBarFill) {
-            this.bossHealthBarFill.width = barWidth * healthPercent;
-
-            // Update Positions to follow boss
-            this.bossHealthBarFill.setPosition(this.boss.x - barWidth / 2, this.boss.y - 100);
-            if (this.bossHealthBarBG) this.bossHealthBarBG.setPosition(this.boss.x, this.boss.y - 100);
-            if (this.bossNameText) this.bossNameText.setPosition(this.boss.x, this.boss.y - 120);
-        }
-
-        this.manageBossAttacks(time);
-    }
-}
-
-manageBossAttacks(time: number) {
-    if (!this.boss || !this.boss.active || this.bossState !== "FIGHTING") return;
-
-    // Pipe Attack (Health < 80%)
-    const currentHealth = this.boss.getData('health') ?? this.bossMaxHealth;
-    if (currentHealth < (this.bossMaxHealth * 0.8)) {
-        if (time - this.lastPipeAttackTime > this.pipeCooldown) {
-            this.firePipeAttack();
-            this.lastPipeAttackTime = time;
-        }
-    }
-
-    // Synchronized Attacks (Laser & Bat)
-    // Laser is always ready eventually
-    const isLaserReady = (time - this.lastLaserTime > this.laserCooldown);
-    // Bat only if enraged
-    const isBatReady = this.isBossEnraged && (time - this.lastBatTime > this.batCooldown);
-
-    if (isLaserReady) {
-        // Rule: Never fire laser if Boss is Vomiting (Texture is vomitboss)
-        if (this.boss.texture.key === 'vomitboss') {
-            return;
-        }
-
-        // Priority: Laser
-        // Rule: Don't fire if Bat fired recently (< 1s ago)
-        if (time - this.lastBatTime >= 1000) {
-            this.bossAttackLasers();
-            this.lastLaserTime = time;
-            return; // Prioritize Laser, skip checking Bat this frame
-        }
-    }
-
-    if (isBatReady) {
-        // Rule: Don't fire if Laser fired recently (< 1s ago)
-        if (time - this.lastLaserTime >= 1000) {
-            this.spawnBossBatVomit();
-            this.lastBatTime = time;
-        }
-    }
-}
-
-firePipeAttack() {
-    const burstCount = 3;
-    const burstDelay = 200; // ms between shots
-
-    for (let i = 0; i < burstCount; i++) {
-        this.time.delayedCall(i * burstDelay, () => {
-            if (!this.boss || !this.boss.active) return;
-
-            const scale = this.boss.scaleX;
-            // Adjust for Bottom Pipes (Red-tipped pipes at bottom corners)
-            const pipeOffsetX = 180 * scale; // Wider
-            const pipeOffsetY = 120 * scale; // Much lower (from center)
-
-            const startXLeft = (this.boss.x - pipeOffsetX) - 50; // Shift Left 50px
-            const startXRight = (this.boss.x + pipeOffsetX) + 30; // Shift Right 30px
-            const startY = this.boss.y + pipeOffsetY;
-
-            // Create Left Pipe Projectile
-            this.fireGravityLaser(startXLeft, startY, -100);
-
-            // Create Right Pipe Projectile
-            this.fireGravityLaser(startXRight, startY, 100);
-        });
-    }
-}
-
-fireGravityLaser(x: number, y: number, velocityX: number) {
-    // Use new asset "omuzprojectile"
-    const laser = this.bossLasers.create(x, y, "omuzprojectile") as Phaser.Physics.Arcade.Image;
-    laser.setTint(0xffffff); // Remove red tint to show original colors
-    laser.setScale(0.75); // Half size (was 1.5)
-    laser.setDepth(20);
-
-    // Initial Velocity: Up and Out
-    // Reduce Horizontal Velocity for sharper turn (User Request)
-    // Reduce Upward Velocity slightly so it doesn't fly too high before turning
-    laser.setVelocity(velocityX * 0.6, -300);
-
-    // Initial Rotation:
-    // User said: "Imagine it faces Right. Turn it to face Up to start."
-    // Moving Up (-300) and Out (velX) means angle is roughly -90.
-    const rad = Math.atan2(-300, velocityX * 0.6);
-    laser.setRotation(rad);
-
-    // Rocket Trail Effect
-    const emitter = this.add.particles(0, 0, "debris", {
-        speed: 50,
-        scale: { start: 0.3, end: 0 }, // Scaled down trail
-        alpha: { start: 0.5, end: 0 },
-        lifespan: 400,
-        frequency: 50,
-        tint: [0xffa500, 0x555555], // Orange to Grey (Fire/Smoke)
-        blendMode: 'ADD'
-    });
-    emitter.startFollow(laser);
-    emitter.setDepth(19); // Trail just below the rocket
-
-    // Cleanup emitter when laser is destroyed
-    laser.on('destroy', () => {
-        emitter.stop();
-        // Allow particles to fade out before destroying emitter
-        this.time.delayedCall(500, () => emitter.destroy());
-    });
-
-    // Gravity to pull it down (U-Turn effect)
-    // Increase Gravity significantly for sharper U-turn (User Request)
-    if (laser.body) {
-        (laser.body as Phaser.Physics.Arcade.Body).setAllowGravity(true);
-        (laser.body as Phaser.Physics.Arcade.Body).setGravityY(700);
-    }
-}
-
-bossAttackLasers() {
-    // Fire 3 projectiles from eyes
-    const scale = this.boss.scaleX;
-    const eyeOffset = 100 * scale;
-    const startY = this.boss.y;
-
-    // 7-Way Spread: Side (20, 160), Gap-Fill (50, 130), Down-Spread (80, 90, 100)
-    const angles = [20, 50, 80, 90, 100, 130, 160];
-
-    // Left Eye
-    angles.forEach(angle => {
-        this.fireLaser(this.boss.x - eyeOffset, startY, angle);
-    });
-
-    // Right Eye
-    angles.forEach(angle => {
-        this.fireLaser(this.boss.x + eyeOffset, startY, angle);
-    });
-}
-
-fireLaser(x: number, y: number, angleDeg: number) {
-    const laser = this.bossLasers.create(x, y, "projectile") as Phaser.Physics.Arcade.Image;
-    laser.setTint(0xff0000);
-    laser.setScale(1.0, 2.2);
-
-    const rad = Phaser.Math.DegToRad(angleDeg);
-    const speed = 225; // Tuned: Middle ground between fast and slow
-    laser.setVelocity(Math.cos(rad) * speed, Math.sin(rad) * speed);
-    laser.setRotation(rad + Math.PI / 2);
-    laser.setDepth(12);
-}
-
-spawnBossBatVomit() {
-    if (!this.boss || !this.boss.active || this.bossState !== "FIGHTING") return;
-
-    // Swap Texture to Vomit Boss
-    this.boss.setTexture("vomitboss");
-
-    // Re-apply scale to fit width (same logic as spawnBoss)
-    this.boss.setScale(this.bossScaleFactor);
-
-    // Revert to normal boss after 2 seconds
-    this.time.delayedCall(2000, () => {
-        if (this.boss && this.boss.active) {
-            this.boss.setTexture("boss");
-            // Re-apply scale for original sprite
-            this.boss.setScale(this.bossScaleFactor);
-        }
-    });
-
-    // Spawn a stream of bats from the "mouth"
-    const spawnCount = 20; // Total bats in the stream
-    const delayBetweenBats = 100; // ms
-
-    for (let i = 0; i < spawnCount; i++) {
-        this.time.delayedCall(i * delayBetweenBats, () => {
-            if (!this.boss || !this.boss.active) return;
-
-            const mouthY = this.boss.y + (this.boss.height * this.boss.scaleY * 0.3); // Approximate mouth position
-            const bat = this.bats.create(this.boss.x, mouthY, 'bat') as Phaser.Physics.Arcade.Sprite;
-
-            bat.setScale(0.25);
-            bat.setAngle(180); // Facing down
-            bat.play('bat-fly');
-
-            // Random spread downwards
-            const spreadX = Phaser.Math.Between(-200, 200);
-            const speedY = Phaser.Math.Between(300, 500);
-
-            bat.setVelocity(spreadX, speedY);
-            bat.setDepth(11); // Above boss bg but below lasers
-
-            // Cleanup if they go off screen (already handled by world bounds or generic update loop, but safe to add)
-            this.time.delayedCall(3000, () => {
-                if (bat && bat.active) bat.destroy();
-            });
-        });
-    }
-}
-
-    private lastBossHitTime: number = 0;
-
-handleBossHit(projectile: Phaser.Physics.Arcade.Image) {
-    // Allow hits during FIGHTING or ENTERING
-    if (!this.boss || !this.boss.active || (this.bossState !== "FIGHTING" && this.bossState !== "ENTERING")) return;
-
-    // Safety Check: Ensure we aren't disabling the boss!
-    if (projectile === this.boss || projectile.texture.key === 'boss') return;
-
-    // Destroy Projectile immediately
-    projectile.destroy();
-
-    const now = this.time.now;
-    if (now - this.lastBossHitTime < 50) return;
-    this.lastBossHitTime = now;
-
-    let currentHealth = this.boss.getData('health');
-    if (currentHealth === undefined || currentHealth === null) currentHealth = 50;
-
-    currentHealth -= 1; // Damage Value (Reduced to 1 as requested)
-    if (currentHealth <= 200 && !this.isBossEnraged) {
-        this.isBossEnraged = true;
-        // Immediate spawn attempt handled by update loop naturally
-        // OR force one now? Better to let manager handle it to ensure sync
-        // But user might expect immediate reaction. 
-        // Let's stick to manager for sync safety.
-    }
-
-    this.boss.setData('health', currentHealth);
-    this.bossHealth = currentHealth;
-
-    if (currentHealth <= 0) {
-        this.killBoss();
-    }
-
-    this.createExplosion(projectile.x, projectile.y);
-}
-
-killBoss() {
-    this.bossState = "HIDDEN";
-    const bx = this.boss.x;
-    const by = this.boss.y;
-
-    if (this.boss) {
-        this.boss.setVisible(false);
-        this.boss.setActive(false);
-        this.createExplosion(bx, by);
-    }
-
-    if (this.bossBG) {
-        const bgX = this.bossBG.x;
-        const bgY = this.bossBG.y;
-
-        // BG Explosion of bats
-        const bgEmitter = this.add.particles(bgX, bgY, 'bat', {
-            speed: { min: 200, max: 600 },
-            angle: { min: 0, max: 360 },
-            scale: { start: 0.1, end: 0.1 }, // Constant scale (4x smaller)
-            lifespan: 2000,
-            quantity: 60,
-            gravityY: 0, // Radial burst
-            rotate: { min: 0, max: 360 },
-            emitting: false
-        });
-        bgEmitter.setDepth(4); // Behind boss explosion (boss is depth 5, BG was -5 but particles should be visible)
-        bgEmitter.explode(60, bgX, bgY);
-
-        this.time.delayedCall(2500, () => bgEmitter.destroy());
-        this.bossBG.destroy();
-    }
-
-    if (this.bossFG) {
-        this.bossFG.destroy();
-    }
-
-    if (this.bossNameText) this.bossNameText.setVisible(false);
-    if (this.bossHealthBarBG) this.bossHealthBarBG.setVisible(false);
-    if (this.bossHealthBarFill) this.bossHealthBarFill.setVisible(false);
-
-    for (let i = 0; i < 5; i++) {
-        this.time.delayedCall(i * 200, () => {
-            this.createExplosion(
-                bx + Phaser.Math.Between(-100, 100),
-                by + Phaser.Math.Between(-100, 100)
-            );
-        });
-    }
-
-    // Massive Bat Explosion
-    const emitter = this.add.particles(bx, by, 'bat', {
-        speed: { min: 400, max: 800 },
-        angle: { min: 0, max: 360 },
-        scale: { start: 0.3, end: 0.3 }, // Constant size
-        lifespan: 1000, // Faster life
-        quantity: 40,
-        gravityY: 0, // Fly outwards
-        rotate: { min: 0, max: 360 },
-        emitting: false
-    });
-
-    emitter.explode(30, bx, by);
-
-    // Auto-destroy emitter after duration
-    this.time.delayedCall(1200, () => emitter.destroy());
-
-    if (this.batVomitEvent) {
-        this.batVomitEvent.remove(false);
-        this.batVomitEvent = undefined;
-    }
-
-    this.boss.destroy();
-    this.bossNameText.destroy();
-    this.bossHealthBarBG.destroy();
-    this.bossHealthBarFill.destroy();
-    this.bossLasers.clear(true, true);
-
-    this.score += 5000;
-    this.scoreText.setText("SCORE: " + this.score);
-}
-
-togglePause() {
-    this.isPaused = !this.isPaused;
-    if (this.isPaused) {
-        this.physics.pause();
-        this.time.paused = true; // Stop all timers (Boss spawn, etc.)
-        this.pauseOverlay.setVisible(true);
-        this.pauseText.setVisible(true);
-        this.pauseRestartBtn.setVisible(true);
-        this.mobilePauseBtn.setText("RESUME");
-    } else {
-        this.physics.resume();
-        this.time.paused = false; // Resume timers
-        this.pauseOverlay.setVisible(false);
-        this.pauseText.setVisible(false);
-        this.pauseRestartBtn.setVisible(false);
-        this.mobilePauseBtn.setText("PAUSE");
-    }
-}
-
-    private updateHpBar() {
-    if (!this.hpBarFill) return;
-
-    this.hpBarFill.clear();
-    const staminaScale = DESIGN_WIDTH / 5585;
-    const staminaHeight = 293 * staminaScale;
-
-    // Use EXACT SAME inner dimensions as Stamina Bar for consistency
-    const fillMaxW = 5413 * staminaScale;
-    const fillH = 217 * staminaScale;
-
-    const hpPercent = Phaser.Math.Clamp(this.health / this.maxHealth, 0, 1);
-    const fillWidth = fillMaxW * hpPercent;
-
-    const hpY = this.hpBarFrame.y;
-
-    // Calculate Top-Left of the Fill Rect logic
-    // Center the frame, then apply inner offset
-    const frameX = DESIGN_WIDTH / 2;
-    const startX = (frameX - (5585 * staminaScale) / 2) + (86 * staminaScale);
-    const startY = (hpY - (staminaHeight / 2)) + (38 * staminaScale);
-
-    this.hpBarFill.fillStyle(0xff0000, 1);
-    this.hpBarFill.fillRect(startX, startY, fillWidth, fillH);
-}
-
-// --- Dynamic Power-up Scheduling ---
-
-scheduleNextBoost() {
-    if (this.isGameOver) return;
-
-    // Dynamic Delay: 10s if Fighting Boss, else 15s
-    const isFighting = (this.bossState === "FIGHTING");
-    const delay = isFighting ? 10000 : 15000;
-
-    this.time.delayedCall(delay, () => {
-        if (this.isGameOver) return;
-        this.spawnBoost();
-        this.scheduleNextBoost(); // Recurse
-    });
-}
-
-spawnBoost() {
-    const x = this.getValidSpawnX();
-    if (x === null) return; // Skip if no space
-
-    const boost = this.boosts.create(x, -50, "boost") as Phaser.Physics.Arcade.Image;
-    boost.setScale(0.3);
-    boost.setVelocityY(150);
-    boost.setDepth(8);
-
-    this.tweens.add({
-        targets: boost,
-        scaleX: -0.3,
-        duration: 500,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut"
-    });
-}
-
-scheduleNextTripleShot() {
-    if (this.isGameOver) return;
-
-    // Dynamic Delay: 10s if Fighting Boss, else 25s
-    const isFighting = (this.bossState === "FIGHTING");
-    const delay = isFighting ? 10000 : 25000;
-
-    this.time.delayedCall(delay, () => {
-        if (this.isGameOver) return;
-        this.spawnTripleShot();
-        this.scheduleNextTripleShot(); // Recurse
-    });
-}
-
-spawnTripleShot() {
-    const x = this.getValidSpawnX();
-    if (x === null) return;
-
-    const item = this.tripleShots.create(x, -50, "tripleshot") as Phaser.Physics.Arcade.Image;
-    item.setScale(0.06);
-    item.setVelocityY(150);
-    item.setDepth(8);
-
-    this.tweens.add({
-        targets: item,
-        scaleX: -0.06,
-        duration: 500,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut"
-    });
-}
-
-scheduleNextHeal() {
-    if (this.isGameOver) return;
-
-    // Dynamic Delay: 10s if Fighting Boss, else 60s
-    const isFighting = (this.bossState === "FIGHTING");
-    const delay = isFighting ? 10000 : 60000;
-
-    this.time.delayedCall(delay, () => {
-        if (this.isGameOver) return;
-        this.spawnHeal();
-        this.scheduleNextHeal(); // Recurse
-    });
-}
-
-spawnHeal() {
-    const x = this.getValidSpawnX();
-    if (x === null) return;
-
-    const item = this.heals.create(x, -50, "heal") as Phaser.Physics.Arcade.Image;
-    item.setScale(0.45);
-    item.setVelocityY(150);
-    item.setDepth(8);
-
-    this.tweens.add({
-        targets: item,
-        scaleX: -0.45,
-        duration: 500,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut"
-    });
-}
-
-// Shield Power-up Logic -- Properties defined at top of class
-
-scheduleNextShield() {
-    if (this.isGameOver) return;
-
-    // Fixed Delay: Every 35 seconds
-    const delay = 35000;
-
-    this.time.delayedCall(delay, () => {
-        if (this.isGameOver) return;
-        this.spawnShield();
-        this.scheduleNextShield(); // Recurse
-    });
-}
-
-spawnShield() {
-    const x = this.getValidSpawnX();
-    if (x === null) return;
-
-    const item = this.shields.create(x, -50, "shield") as Phaser.Physics.Arcade.Image;
-    // 1.5x bigger (0.15 * 1.5 = 0.225)
-    item.setScale(0.225);
-    item.setVelocityY(150);
-    item.setDepth(8);
-
-    // Rotate and Fall (like Boost)
-    this.tweens.add({
-        targets: item,
-        scaleX: -0.225, // Maintain aspect ratio flip
-        duration: 500,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut"
-    });
-}
-
-getValidSpawnX(padding: number = 80): number | null {
-    const attempts = 15;
-    for (let i = 0; i < attempts; i++) {
-        const x = Phaser.Math.Between(50, DESIGN_WIDTH - 50);
-        let safe = true;
-
-        // Check against all powerup groups
-        const groups = [this.boosts, this.tripleShots, this.heals, this.shields];
-        for (const group of groups) {
-            const children = group.getChildren() as Phaser.Physics.Arcade.Image[];
-            for (const child of children) {
-                if (child.active) {
-                    // Only care if they are near the top (spawning area) - < 150px
-                    if (child.y < 150 && Math.abs(child.x - x) < padding) {
-                        safe = false;
-                        break;
+        const bts = this.bats.getChildren();
+        for (let i = bts.length - 1; i >= 0; i--) {
+            const child = bts[i] as Phaser.Physics.Arcade.Sprite;
+            if (child.active) {
+                if (child.y > DESIGN_HEIGHT + 100) {
+                    child.destroy();
+                    continue;
+                }
+
+                if (child.body) {
+                    // Enforce downward movement
+                    if (child.body.velocity.y < 0) {
+                        child.setVelocityY(Math.max(100, Math.abs(child.body.velocity.y)));
+                    }
+                    // Cap horizontal speed to prevent erratic bouncing
+                    if (Math.abs(child.body.velocity.x) > 200) {
+                        child.setVelocityX(200 * Math.sign(child.body.velocity.x));
                     }
                 }
             }
-            if (!safe) break;
         }
 
-        if (safe) return x;
+        const ghts = this.ghosts.getChildren();
+        for (let i = ghts.length - 1; i >= 0; i--) {
+            const child = ghts[i] as Phaser.Physics.Arcade.Sprite;
+            if (child.active) {
+                if (child.y > DESIGN_HEIGHT + 100) {
+                    child.destroy();
+                    continue;
+                }
+
+                // Acceleration-based movement (Natural Physics)
+                const swaySpeed = child.getData('swaySpeed') || 0.003;
+                const swayForce = child.getData('swayForce') || 50;
+
+                // Set acceleration based on time (Swaying)
+                const normalAccelX = Math.sin(time * swaySpeed) * swayForce;
+
+                // Soft Boundary Logic
+                const margin = 75;
+                const turnForce = 450;
+
+                if (child.x < margin) {
+                    // Left Edge: Slow down if moving left, push right
+                    if ((child.body?.velocity.x ?? 0) < 0) child.setDragX(300);
+                    child.setAccelerationX(turnForce);
+                } else if (child.x > DESIGN_WIDTH - margin) {
+                    // Right Edge: Slow down if moving right, push left
+                    if ((child.body?.velocity.x ?? 0) > 0) child.setDragX(300);
+                    child.setAccelerationX(-turnForce);
+                } else {
+                    // Center: Normal sway
+                    child.setDragX(30);
+                    child.setAccelerationX(normalAccelX);
+                }
+
+                // Enforce downward movement safety net
+                const maxSpeedY = child.getData('speedY') || 100;
+                if (child.body) {
+                    if (child.body.velocity.y < 50) { // If it slows down too much or goes up
+                        child.setVelocityY(maxSpeedY);
+                    }
+                }
+
+                // Rotation follows velocity
+                const vx = child.body?.velocity.x || 0;
+                const vy = child.body?.velocity.y || 100;
+                const targetAngle = Math.atan2(vy, vx) - Math.PI / 2;
+
+                // Smooth rotation
+                const currentRot = child.rotation;
+                const diff = Phaser.Math.Angle.Wrap(targetAngle - currentRot);
+                child.rotation += diff * 0.1;
+            }
+        }
+
+        // Boost Cleanup
+        const bsts = this.boosts.getChildren();
+        for (let i = bsts.length - 1; i >= 0; i--) {
+            const child = bsts[i] as Phaser.Physics.Arcade.Image;
+            if (child.active && child.y > DESIGN_HEIGHT + 50) child.destroy();
+        }
+
+        // Triple Shot Cleanup
+        const tshots = this.tripleShots.getChildren();
+        for (let i = tshots.length - 1; i >= 0; i--) {
+            const child = tshots[i] as Phaser.Physics.Arcade.Image;
+            if (child.active && child.y > DESIGN_HEIGHT + 50) child.destroy();
+        }
+
+        // Heal Cleanup
+        const heals = this.heals.getChildren();
+        for (let i = heals.length - 1; i >= 0; i--) {
+            const child = heals[i] as Phaser.Physics.Arcade.Image;
+            if (child.active && child.y > DESIGN_HEIGHT + 50) child.destroy();
+        }
+
+        // Boss Lasers Cleanup & Logic
+        const lasers = this.bossLasers.getChildren();
+        for (let i = lasers.length - 1; i >= 0; i--) {
+            const child = lasers[i] as Phaser.Physics.Arcade.Image;
+            if (child.active) {
+                // Cleanup off-screen
+                if (child.y > DESIGN_HEIGHT + 100) {
+                    child.destroy();
+                    continue;
+                }
+
+                // Gravity Rotation Logic
+                // Gravity Rotation Logic
+                // Only for "omuzprojectile" (shoulder rockets) which have gravity enabled and need custom rotation
+                if (child.texture.key === "omuzprojectile") {
+                    const body = child.body as Phaser.Physics.Arcade.Body;
+                    if (body) {
+                        // Target angle based on velocity
+                        const targetRotation = Math.atan2(body.velocity.y, body.velocity.x);
+                        // Eased rotation: Interp current to target
+                        // Use Angle.RotateTo or simple lerp
+                        child.rotation = Phaser.Math.Angle.RotateTo(child.rotation, targetRotation, 0.1);
+                    }
+                }
+            }
+        }
     }
-    return null; // Could not find a spot (Screen crowded)
-}
 
-activateShield() {
-    // Reset Logic
-    this.isShieldActive = true;
-    this.shieldTimer = this.maxShieldTime; // Refill Timer
-    this.shieldUIContainer.setVisible(true);
+    spawnBoss() {
+        if (this.bossState !== "HIDDEN") return;
+        this.bossState = "ENTERING";
+        // Reset health to max when spawning
+        this.bossHealth = this.bossMaxHealth;
+        this.isBossEnraged = false;
 
-    // Remove old visual if exists
-    if (this.shieldEffect) this.shieldEffect.destroy();
+        // Play Boss Entry Sound (if music enabled)
+        if (this.isMusicPlaying && this.bossEntrySound) {
+            this.bossEntrySound.play();
+        }
 
-    // Visual: Create Shield Effect attached to Ship
-    this.shieldEffect = this.add.image(this.ship.x, this.ship.y, "shield-fx");
-    this.shieldEffect.setDepth(this.ship.depth + 1); // Above ship
+        // Create Boss Sprite (Off-screen BOTTOM)
+        this.boss = this.physics.add.image(DESIGN_WIDTH / 2, DESIGN_HEIGHT + 150, "boss");
+        this.bossGroup.add(this.boss); // Add to Group
+        this.boss.setDepth(5);
+        this.boss.setVisible(true);
+        this.boss.setActive(true);
+        this.boss.setImmovable(true);
+        if (this.boss.body) {
+            this.boss.body.onCollide = true;
+        }
 
-    // Scale relative to ship (Mobile fix)
-    // Previous fixed scale 0.25 was too big on mobile.
-    // Ship is scaled to typical width ~120px. 
-    // We want shield to be slightly larger than ship.
-    this.shieldEffect.setScale(this.ship.scaleX * 0.8);
+        // Playable Height (Screen - Safe Zone)
+        const safeZoneHeight = 150;
+        const playableHeight = DESIGN_HEIGHT - safeZoneHeight;
 
-    // Yellow Glow Effect on Ship (Keep as secondary visual)
-    if ((this.ship as any).preFX) {
-        (this.ship as any).preFX.clear();
-        (this.ship as any).preFX.addGlow(0xffff00, 4, 0, false, 0.1, 10);
-    } else {
-        this.ship.setTint(0xffff00);
+        // Global Scaling Ratio (New Height / Old Height)
+        const globalRatio = playableHeight / DESIGN_HEIGHT;
+
+        // Scale to fit width, THEN REDUCE PROPORTIONALLY
+        // Old Logic was: (DESIGN_WIDTH / width) * (2/3)
+        // New Logic: Apply globalRatio to that
+        const targetWidth = DESIGN_WIDTH;
+        let baseScale = (targetWidth / this.boss.width) * (2 / 3);
+        this.bossScaleFactor = baseScale * globalRatio;
+
+        this.boss.setScale(this.bossScaleFactor);
+        this.boss.setOrigin(0.5, 0.5);
+
+        // Auto-Size Hitbox (Reliable with Group)
+        // Auto-Size Hitbox (Reliable with Group)
+        if (this.boss.body) {
+            const body = this.boss.body as Phaser.Physics.Arcade.Body;
+            body.updateFromGameObject();
+            body.setAllowGravity(false);
+            // MANUALLY OFFSET HITBOX UPWARDS
+            // Move hitbox UP by 150px (original) + 40px (visual shift) = 190px
+            // This keeps the hitbox in the SAME world position while the sprite moves down.
+            body.setOffset(0, -190);
+        }
+
+        this.boss.setData('health', this.bossMaxHealth);
+
+        // Create Boss Background (6.png) - Static Layer
+        // FIX: Use DESIGN_HEIGHT to ensure full coverage, not just playable area
+        this.bossBG = this.add.image(DESIGN_WIDTH / 2, playableHeight + (playableHeight / 2), "boss-bg");
+        this.bossBG.setDepth(1);
+        this.bossBG.setTint(0xB2B2B2); // Reduce brightness by 30%
+        this.bossBG.setDisplaySize((DESIGN_WIDTH * 1.2) * globalRatio * 1.5, DESIGN_HEIGHT * 1.5);
+
+        // Create Boss Foreground (7.png) - Animated Tentacles
+        this.bossFG = this.add.image(DESIGN_WIDTH / 2, playableHeight + (playableHeight / 2), "boss-fg");
+        this.bossFG.setDepth(2); // Above BG, Below Boss (Boss is depth 5)
+        this.bossFG.setDisplaySize((DESIGN_WIDTH * 1.2) * globalRatio * 1.5, DESIGN_HEIGHT * 1.5);
+
+        // Register and apply PurpleWavePipeline to Foreground Only
+        const renderer = this.renderer as Phaser.Renderer.WebGL.WebGLRenderer;
+        if (renderer.pipelines && !renderer.pipelines.has('PurpleWavePipeline')) {
+            renderer.pipelines.addPostPipeline('PurpleWavePipeline', PurpleWavePipeline);
+        }
+        this.bossFG.setPostPipeline('PurpleWavePipeline');
+
+        // Move up by 50px (Scaled) -> Then shift DOWN 50px as requested -> Now UP 80px as requested
+        // Original DestY logic: ((this.boss.height * this.bossScaleFactor) / 2) + 30;
+        // Previous Shift: + 80 (Net +50 relative to +30)
+        // New Shift: + 80 - 80 = 0
+        // LATEST REQUEST: Move down 40px visually.
+        const destY = ((this.boss.height * this.bossScaleFactor) / 2) + 40;
+
+        // Tween Boss Entry & Backgrounds Entry (Synchronized)
+        // Backgrounds move to center of playable area
+        this.tweens.add({
+            targets: [this.bossBG],
+            // Previous: Center + 50px
+            // Reverted to: Center + 50
+            y: (playableHeight / 2) + 50,
+            duration: 4000,
+            ease: "Power2"
+        });
+
+        // Boss moves to destY
+        this.tweens.add({
+            targets: [this.boss],
+            y: destY,
+            duration: 4000,
+            ease: "Power2"
+        });
+
+        this.tweens.add({
+            targets: this.bossFG,
+            // Previous: Center + 75
+            // Reverted to: Center + 75
+            y: (playableHeight / 2) + 75,
+            duration: 4000,
+            ease: "Power2"
+        });
+
+        this.tweens.add({
+            targets: this.bossBG,
+            y: playableHeight / 2,
+            duration: 4000,
+            ease: "Power2",
+            onComplete: () => {
+                this.bossState = "FIGHTING";
+                this.bossFightStartTime = this.time.now; // Track start time for smooth sway
+
+                // Init Health Bar & Name - Anchor to Boss
+                // Text over Head
+                this.bossNameText = this.add.text(this.boss.x, this.boss.y - 120, "Cryptonic Sam", {
+                    fontSize: "14px",
+                    fontFamily: '"Press Start 2P"',
+                    color: "#ffffff",
+                    stroke: "#000000",
+                    strokeThickness: 3
+                }).setOrigin(0.5).setDepth(200);
+
+                const barWidth = 200; // Fixed width relative to boss
+                this.bossHealthBarBG = this.add.rectangle(this.boss.x, this.boss.y - 100, barWidth, 10, 0x000000).setDepth(200);
+                this.bossHealthBarFill = this.add.rectangle(this.boss.x - barWidth / 2, this.boss.y - 100, barWidth, 10, 0xff0000).setDepth(201).setOrigin(0, 0.5);
+
+                // Re-sync hitbox
+                if (this.boss.body) {
+                    const body = this.boss.body as Phaser.Physics.Arcade.Body;
+                    body.updateFromGameObject();
+                }
+
+                // Start Attack Loop managed by updateBoss -> manageBossAttacks
+            }
+        });
+
+        // ENABLE COLLISION: Ship vs Boss Lasers (Player Damage)
+        this.physics.add.overlap(this.ship, this.bossLasers, (ship, laser) => {
+            this.handlePlayerHit(laser as any, true);
+        });
+
+        // ENABLE COLLISION: Ship vs Boss Body (IMMUNE - No Damage)
+        this.physics.add.overlap(this.ship, this.boss, (ship, boss) => {
+            // Do nothing - Immunity as requested
+        });
+
+        // ENABLE COLLISION: Projectiles vs Boss Lasers (Mutually Destroy)
+        this.physics.add.overlap(this.projectiles, this.bossLasers, (proj, laser) => {
+            this.createExplosion((proj as any).x, (proj as any).y);
+            proj.destroy();
+            laser.destroy();
+        });
     }
-}
+
+    updateBoss(time: number, dt: number) {
+        if (!this.boss || !this.boss.active) return;
+
+        if (this.bossState === "FIGHTING") {
+            // Horizontal Sway (Synchronized Boss & Background)
+            // Use relative time so sin starts at 0 (center)
+            const swayX = Math.sin((time - this.bossFightStartTime) * 0.0015) * 40;
+            this.boss.x = DESIGN_WIDTH / 2 + swayX;
+            if (this.bossBG) this.bossBG.x = DESIGN_WIDTH / 2 + swayX;
+            if (this.bossFG) this.bossFG.x = DESIGN_WIDTH / 2 + swayX;
+
+            const currentHealth = this.boss.getData('health') ?? 50;
+            const healthPercent = Phaser.Math.Clamp(currentHealth / this.bossMaxHealth, 0, 1);
+            const barWidth = 200; // Match init width
+
+            if (this.bossHealthBarFill) {
+                this.bossHealthBarFill.width = barWidth * healthPercent;
+
+                // Update Positions to follow boss
+                this.bossHealthBarFill.setPosition(this.boss.x - barWidth / 2, this.boss.y - 100);
+                if (this.bossHealthBarBG) this.bossHealthBarBG.setPosition(this.boss.x, this.boss.y - 100);
+                if (this.bossNameText) this.bossNameText.setPosition(this.boss.x, this.boss.y - 120);
+            }
+
+            this.manageBossAttacks(time);
+        }
+    }
+
+    manageBossAttacks(time: number) {
+        if (!this.boss || !this.boss.active || this.bossState !== "FIGHTING") return;
+
+        // Pipe Attack (Health < 80%)
+        const currentHealth = this.boss.getData('health') ?? this.bossMaxHealth;
+        if (currentHealth < (this.bossMaxHealth * 0.8)) {
+            if (time - this.lastPipeAttackTime > this.pipeCooldown) {
+                this.firePipeAttack();
+                this.lastPipeAttackTime = time;
+            }
+        }
+
+        // Synchronized Attacks (Laser & Bat)
+        // Laser is always ready eventually
+        const isLaserReady = (time - this.lastLaserTime > this.laserCooldown);
+        // Bat only if enraged
+        const isBatReady = this.isBossEnraged && (time - this.lastBatTime > this.batCooldown);
+
+        if (isLaserReady) {
+            // Rule: Never fire laser if Boss is Vomiting (Texture is vomitboss)
+            if (this.boss.texture.key === 'vomitboss') {
+                return;
+            }
+
+            // Priority: Laser
+            // Rule: Don't fire if Bat fired recently (< 1s ago)
+            if (time - this.lastBatTime >= 1000) {
+                this.bossAttackLasers();
+                this.lastLaserTime = time;
+                return; // Prioritize Laser, skip checking Bat this frame
+            }
+        }
+
+        if (isBatReady) {
+            // Rule: Don't fire if Laser fired recently (< 1s ago)
+            if (time - this.lastLaserTime >= 1000) {
+                this.spawnBossBatVomit();
+                this.lastBatTime = time;
+            }
+        }
+    }
+
+    firePipeAttack() {
+        const burstCount = 3;
+        const burstDelay = 200; // ms between shots
+
+        for (let i = 0; i < burstCount; i++) {
+            this.time.delayedCall(i * burstDelay, () => {
+                if (!this.boss || !this.boss.active) return;
+
+                const scale = this.boss.scaleX;
+                // Adjust for Bottom Pipes (Red-tipped pipes at bottom corners)
+                const pipeOffsetX = 180 * scale; // Wider
+                const pipeOffsetY = 120 * scale; // Much lower (from center)
+
+                const startXLeft = (this.boss.x - pipeOffsetX) - 50; // Shift Left 50px
+                const startXRight = (this.boss.x + pipeOffsetX) + 30; // Shift Right 30px
+                const startY = this.boss.y + pipeOffsetY;
+
+                // Create Left Pipe Projectile
+                this.fireGravityLaser(startXLeft, startY, -100);
+
+                // Create Right Pipe Projectile
+                this.fireGravityLaser(startXRight, startY, 100);
+            });
+        }
+    }
+
+    fireGravityLaser(x: number, y: number, velocityX: number) {
+        // Use new asset "omuzprojectile"
+        const laser = this.bossLasers.create(x, y, "omuzprojectile") as Phaser.Physics.Arcade.Image;
+        laser.setTint(0xffffff); // Remove red tint to show original colors
+        laser.setScale(0.75); // Half size (was 1.5)
+        laser.setDepth(20);
+
+        // Initial Velocity: Up and Out
+        // Reduce Horizontal Velocity for sharper turn (User Request)
+        // Reduce Upward Velocity slightly so it doesn't fly too high before turning
+        laser.setVelocity(velocityX * 0.6, -300);
+
+        // Initial Rotation:
+        // User said: "Imagine it faces Right. Turn it to face Up to start."
+        // Moving Up (-300) and Out (velX) means angle is roughly -90.
+        const rad = Math.atan2(-300, velocityX * 0.6);
+        laser.setRotation(rad);
+
+        // Rocket Trail Effect
+        const emitter = this.add.particles(0, 0, "debris", {
+            speed: 50,
+            scale: { start: 0.3, end: 0 }, // Scaled down trail
+            alpha: { start: 0.5, end: 0 },
+            lifespan: 400,
+            frequency: 50,
+            tint: [0xffa500, 0x555555], // Orange to Grey (Fire/Smoke)
+            blendMode: 'ADD'
+        });
+        emitter.startFollow(laser);
+        emitter.setDepth(19); // Trail just below the rocket
+
+        // Cleanup emitter when laser is destroyed
+        laser.on('destroy', () => {
+            emitter.stop();
+            // Allow particles to fade out before destroying emitter
+            this.time.delayedCall(500, () => emitter.destroy());
+        });
+
+        // Gravity to pull it down (U-Turn effect)
+        // Increase Gravity significantly for sharper U-turn (User Request)
+        if (laser.body) {
+            (laser.body as Phaser.Physics.Arcade.Body).setAllowGravity(true);
+            (laser.body as Phaser.Physics.Arcade.Body).setGravityY(700);
+        }
+    }
+
+    bossAttackLasers() {
+        // Fire 3 projectiles from eyes
+        const scale = this.boss.scaleX;
+        const eyeOffset = 100 * scale;
+        const startY = this.boss.y;
+
+        // 7-Way Spread: Side (20, 160), Gap-Fill (50, 130), Down-Spread (80, 90, 100)
+        const angles = [20, 50, 80, 90, 100, 130, 160];
+
+        // Left Eye
+        angles.forEach(angle => {
+            this.fireLaser(this.boss.x - eyeOffset, startY, angle);
+        });
+
+        // Right Eye
+        angles.forEach(angle => {
+            this.fireLaser(this.boss.x + eyeOffset, startY, angle);
+        });
+    }
+
+    fireLaser(x: number, y: number, angleDeg: number) {
+        const laser = this.bossLasers.create(x, y, "projectile") as Phaser.Physics.Arcade.Image;
+        laser.setTint(0xff0000);
+        laser.setScale(1.0, 2.2);
+
+        const rad = Phaser.Math.DegToRad(angleDeg);
+        const speed = 225; // Tuned: Middle ground between fast and slow
+        laser.setVelocity(Math.cos(rad) * speed, Math.sin(rad) * speed);
+        laser.setRotation(rad + Math.PI / 2);
+        laser.setDepth(12);
+    }
+
+    spawnBossBatVomit() {
+        if (!this.boss || !this.boss.active || this.bossState !== "FIGHTING") return;
+
+        // Swap Texture to Vomit Boss
+        this.boss.setTexture("vomitboss");
+
+        // Re-apply scale to fit width (same logic as spawnBoss)
+        this.boss.setScale(this.bossScaleFactor);
+
+        // Revert to normal boss after 2 seconds
+        this.time.delayedCall(2000, () => {
+            if (this.boss && this.boss.active) {
+                this.boss.setTexture("boss");
+                // Re-apply scale for original sprite
+                this.boss.setScale(this.bossScaleFactor);
+            }
+        });
+
+        // Spawn a stream of bats from the "mouth"
+        const spawnCount = 20; // Total bats in the stream
+        const delayBetweenBats = 100; // ms
+
+        for (let i = 0; i < spawnCount; i++) {
+            this.time.delayedCall(i * delayBetweenBats, () => {
+                if (!this.boss || !this.boss.active) return;
+
+                const mouthY = this.boss.y + (this.boss.height * this.boss.scaleY * 0.3); // Approximate mouth position
+                const bat = this.bats.create(this.boss.x, mouthY, 'bat') as Phaser.Physics.Arcade.Sprite;
+
+                bat.setScale(0.25);
+                bat.setAngle(180); // Facing down
+                bat.play('bat-fly');
+
+                // Random spread downwards
+                const spreadX = Phaser.Math.Between(-200, 200);
+                const speedY = Phaser.Math.Between(300, 500);
+
+                bat.setVelocity(spreadX, speedY);
+                bat.setDepth(11); // Above boss bg but below lasers
+
+                // Cleanup if they go off screen (already handled by world bounds or generic update loop, but safe to add)
+                this.time.delayedCall(3000, () => {
+                    if (bat && bat.active) bat.destroy();
+                });
+            });
+        }
+    }
+
+    private lastBossHitTime: number = 0;
+
+    handleBossHit(projectile: Phaser.Physics.Arcade.Image) {
+        // Allow hits during FIGHTING or ENTERING
+        if (!this.boss || !this.boss.active || (this.bossState !== "FIGHTING" && this.bossState !== "ENTERING")) return;
+
+        // Safety Check: Ensure we aren't disabling the boss!
+        if (projectile === this.boss || projectile.texture.key === 'boss') return;
+
+        // Destroy Projectile immediately
+        projectile.destroy();
+
+        const now = this.time.now;
+        if (now - this.lastBossHitTime < 50) return;
+        this.lastBossHitTime = now;
+
+        let currentHealth = this.boss.getData('health');
+        if (currentHealth === undefined || currentHealth === null) currentHealth = 50;
+
+        currentHealth -= 1; // Damage Value (Reduced to 1 as requested)
+        if (currentHealth <= 200 && !this.isBossEnraged) {
+            this.isBossEnraged = true;
+            // Immediate spawn attempt handled by update loop naturally
+            // OR force one now? Better to let manager handle it to ensure sync
+            // But user might expect immediate reaction. 
+            // Let's stick to manager for sync safety.
+        }
+
+        this.boss.setData('health', currentHealth);
+        this.bossHealth = currentHealth;
+
+        if (currentHealth <= 0) {
+            this.killBoss();
+        }
+
+        this.createExplosion(projectile.x, projectile.y);
+    }
+
+    killBoss() {
+        this.bossState = "HIDDEN";
+        const bx = this.boss.x;
+        const by = this.boss.y;
+
+        if (this.boss) {
+            this.boss.setVisible(false);
+            this.boss.setActive(false);
+            this.createExplosion(bx, by);
+        }
+
+        if (this.bossBG) {
+            const bgX = this.bossBG.x;
+            const bgY = this.bossBG.y;
+
+            // BG Explosion of bats
+            const bgEmitter = this.add.particles(bgX, bgY, 'bat', {
+                speed: { min: 200, max: 600 },
+                angle: { min: 0, max: 360 },
+                scale: { start: 0.1, end: 0.1 }, // Constant scale (4x smaller)
+                lifespan: 2000,
+                quantity: 60,
+                gravityY: 0, // Radial burst
+                rotate: { min: 0, max: 360 },
+                emitting: false
+            });
+            bgEmitter.setDepth(4); // Behind boss explosion (boss is depth 5, BG was -5 but particles should be visible)
+            bgEmitter.explode(60, bgX, bgY);
+
+            this.time.delayedCall(2500, () => bgEmitter.destroy());
+            this.bossBG.destroy();
+        }
+
+        if (this.bossFG) {
+            this.bossFG.destroy();
+        }
+
+        if (this.bossNameText) this.bossNameText.setVisible(false);
+        if (this.bossHealthBarBG) this.bossHealthBarBG.setVisible(false);
+        if (this.bossHealthBarFill) this.bossHealthBarFill.setVisible(false);
+
+        for (let i = 0; i < 5; i++) {
+            this.time.delayedCall(i * 200, () => {
+                this.createExplosion(
+                    bx + Phaser.Math.Between(-100, 100),
+                    by + Phaser.Math.Between(-100, 100)
+                );
+            });
+        }
+
+        // Massive Bat Explosion
+        const emitter = this.add.particles(bx, by, 'bat', {
+            speed: { min: 400, max: 800 },
+            angle: { min: 0, max: 360 },
+            scale: { start: 0.3, end: 0.3 }, // Constant size
+            lifespan: 1000, // Faster life
+            quantity: 40,
+            gravityY: 0, // Fly outwards
+            rotate: { min: 0, max: 360 },
+            emitting: false
+        });
+
+        emitter.explode(30, bx, by);
+
+        // Auto-destroy emitter after duration
+        this.time.delayedCall(1200, () => emitter.destroy());
+
+        if (this.batVomitEvent) {
+            this.batVomitEvent.remove(false);
+            this.batVomitEvent = undefined;
+        }
+
+        this.boss.destroy();
+        this.bossNameText.destroy();
+        this.bossHealthBarBG.destroy();
+        this.bossHealthBarFill.destroy();
+        this.bossLasers.clear(true, true);
+
+        this.score += 5000;
+        this.scoreText.setText("SCORE: " + this.score);
+    }
+
+    togglePause() {
+        this.isPaused = !this.isPaused;
+        if (this.isPaused) {
+            this.physics.pause();
+            this.time.paused = true; // Stop all timers (Boss spawn, etc.)
+            this.pauseOverlay.setVisible(true);
+            this.pauseText.setVisible(true);
+            this.pauseRestartBtn.setVisible(true);
+            this.mobilePauseBtn.setText("RESUME");
+        } else {
+            this.physics.resume();
+            this.time.paused = false; // Resume timers
+            this.pauseOverlay.setVisible(false);
+            this.pauseText.setVisible(false);
+            this.pauseRestartBtn.setVisible(false);
+            this.mobilePauseBtn.setText("PAUSE");
+        }
+    }
+
+    private updateHpBar() {
+        if (!this.hpBarFill) return;
+
+        this.hpBarFill.clear();
+        const staminaScale = DESIGN_WIDTH / 5585;
+        const staminaHeight = 293 * staminaScale;
+
+        // Use EXACT SAME inner dimensions as Stamina Bar for consistency
+        const fillMaxW = 5413 * staminaScale;
+        const fillH = 217 * staminaScale;
+
+        const hpPercent = Phaser.Math.Clamp(this.health / this.maxHealth, 0, 1);
+        const fillWidth = fillMaxW * hpPercent;
+
+        const hpY = this.hpBarFrame.y;
+
+        // Calculate Top-Left of the Fill Rect logic
+        // Center the frame, then apply inner offset
+        const frameX = DESIGN_WIDTH / 2;
+        const startX = (frameX - (5585 * staminaScale) / 2) + (86 * staminaScale);
+        const startY = (hpY - (staminaHeight / 2)) + (38 * staminaScale);
+
+        this.hpBarFill.fillStyle(0xff0000, 1);
+        this.hpBarFill.fillRect(startX, startY, fillWidth, fillH);
+    }
+
+    // --- Dynamic Power-up Scheduling ---
+
+    scheduleNextBoost() {
+        if (this.isGameOver) return;
+
+        // Dynamic Delay: 10s if Fighting Boss, else 15s
+        const isFighting = (this.bossState === "FIGHTING");
+        const delay = isFighting ? 10000 : 15000;
+
+        this.time.delayedCall(delay, () => {
+            if (this.isGameOver) return;
+            this.spawnBoost();
+            this.scheduleNextBoost(); // Recurse
+        });
+    }
+
+    spawnBoost() {
+        const x = this.getValidSpawnX();
+        if (x === null) return; // Skip if no space
+
+        const boost = this.boosts.create(x, -50, "boost") as Phaser.Physics.Arcade.Image;
+        boost.setScale(0.3);
+        boost.setVelocityY(150);
+        boost.setDepth(8);
+
+        this.tweens.add({
+            targets: boost,
+            scaleX: -0.3,
+            duration: 500,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.easeInOut"
+        });
+    }
+
+    scheduleNextTripleShot() {
+        if (this.isGameOver) return;
+
+        // Dynamic Delay: 10s if Fighting Boss, else 25s
+        const isFighting = (this.bossState === "FIGHTING");
+        const delay = isFighting ? 10000 : 25000;
+
+        this.time.delayedCall(delay, () => {
+            if (this.isGameOver) return;
+            this.spawnTripleShot();
+            this.scheduleNextTripleShot(); // Recurse
+        });
+    }
+
+    spawnTripleShot() {
+        const x = this.getValidSpawnX();
+        if (x === null) return;
+
+        const item = this.tripleShots.create(x, -50, "tripleshot") as Phaser.Physics.Arcade.Image;
+        item.setScale(0.06);
+        item.setVelocityY(150);
+        item.setDepth(8);
+
+        this.tweens.add({
+            targets: item,
+            scaleX: -0.06,
+            duration: 500,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.easeInOut"
+        });
+    }
+
+    scheduleNextHeal() {
+        if (this.isGameOver) return;
+
+        // Dynamic Delay: 10s if Fighting Boss, else 60s
+        const isFighting = (this.bossState === "FIGHTING");
+        const delay = isFighting ? 10000 : 60000;
+
+        this.time.delayedCall(delay, () => {
+            if (this.isGameOver) return;
+            this.spawnHeal();
+            this.scheduleNextHeal(); // Recurse
+        });
+    }
+
+    spawnHeal() {
+        const x = this.getValidSpawnX();
+        if (x === null) return;
+
+        const item = this.heals.create(x, -50, "heal") as Phaser.Physics.Arcade.Image;
+        item.setScale(0.45);
+        item.setVelocityY(150);
+        item.setDepth(8);
+
+        this.tweens.add({
+            targets: item,
+            scaleX: -0.45,
+            duration: 500,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.easeInOut"
+        });
+    }
+
+    // Shield Power-up Logic -- Properties defined at top of class
+
+    scheduleNextShield() {
+        if (this.isGameOver) return;
+
+        // Fixed Delay: Every 35 seconds
+        const delay = 35000;
+
+        this.time.delayedCall(delay, () => {
+            if (this.isGameOver) return;
+            this.spawnShield();
+            this.scheduleNextShield(); // Recurse
+        });
+    }
+
+    spawnShield() {
+        const x = this.getValidSpawnX();
+        if (x === null) return;
+
+        const item = this.shields.create(x, -50, "shield") as Phaser.Physics.Arcade.Image;
+        // 1.5x bigger (0.15 * 1.5 = 0.225)
+        item.setScale(0.225);
+        item.setVelocityY(150);
+        item.setDepth(8);
+
+        // Rotate and Fall (like Boost)
+        this.tweens.add({
+            targets: item,
+            scaleX: -0.225, // Maintain aspect ratio flip
+            duration: 500,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.easeInOut"
+        });
+    }
+
+    getValidSpawnX(padding: number = 80): number | null {
+        const attempts = 15;
+        for (let i = 0; i < attempts; i++) {
+            const x = Phaser.Math.Between(50, DESIGN_WIDTH - 50);
+            let safe = true;
+
+            // Check against all powerup groups
+            const groups = [this.boosts, this.tripleShots, this.heals, this.shields];
+            for (const group of groups) {
+                const children = group.getChildren() as Phaser.Physics.Arcade.Image[];
+                for (const child of children) {
+                    if (child.active) {
+                        // Only care if they are near the top (spawning area) - < 150px
+                        if (child.y < 150 && Math.abs(child.x - x) < padding) {
+                            safe = false;
+                            break;
+                        }
+                    }
+                }
+                if (!safe) break;
+            }
+
+            if (safe) return x;
+        }
+        return null; // Could not find a spot (Screen crowded)
+    }
+
+    activateShield() {
+        // Reset Logic
+        this.isShieldActive = true;
+        this.shieldTimer = this.maxShieldTime; // Refill Timer
+        this.shieldUIContainer.setVisible(true);
+
+        // Remove old visual if exists
+        if (this.shieldEffect) this.shieldEffect.destroy();
+
+        // Visual: Create Shield Effect attached to Ship
+        this.shieldEffect = this.add.image(this.ship.x, this.ship.y, "shield-fx");
+        this.shieldEffect.setDepth(this.ship.depth + 1); // Above ship
+
+        // Scale relative to ship (Mobile fix)
+        // Previous fixed scale 0.25 was too big on mobile.
+        // Ship is scaled to typical width ~120px. 
+        // We want shield to be slightly larger than ship.
+        this.shieldEffect.setScale(this.ship.scaleX * 0.8);
+
+        // Yellow Glow Effect on Ship (Keep as secondary visual)
+        if ((this.ship as any).preFX) {
+            (this.ship as any).preFX.clear();
+            (this.ship as any).preFX.addGlow(0xffff00, 4, 0, false, 0.1, 10);
+        } else {
+            this.ship.setTint(0xffff00);
+        }
+    }
 }
