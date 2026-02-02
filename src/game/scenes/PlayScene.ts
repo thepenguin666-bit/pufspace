@@ -172,11 +172,13 @@ export class PlayScene extends Phaser.Scene {
 
         // 3. Music Crossfade: Fade OUT bgMusic, Fade IN bgMusic2
         if (this.isMusicPlaying && this.bgMusic && this.bgMusic2) {
-            // Start playing bgMusic2 at volume 0
-            if (!this.bgMusic2.isPlaying) {
+            // Resume bgMusic2 (was pre-unlocked and paused in create())
+            if (this.bgMusic2.isPaused) {
+                this.bgMusic2.resume();
+            } else if (!this.bgMusic2.isPlaying) {
                 this.bgMusic2.play();
-                (this.bgMusic2 as Phaser.Sound.WebAudioSound).setVolume(0);
             }
+            (this.bgMusic2 as Phaser.Sound.WebAudioSound).setVolume(0);
 
             // Fade out first track
             this.tweens.add({
@@ -702,6 +704,11 @@ export class PlayScene extends Phaser.Scene {
 
         if (this.isMusicPlaying) {
             this.bgMusic.play();
+            // Pre-unlock bgMusic2 for mobile: play silently then pause
+            // This allows the crossfade to work later without user interaction
+            (this.bgMusic2 as Phaser.Sound.WebAudioSound).setVolume(0);
+            this.bgMusic2.play();
+            this.bgMusic2.pause();
         }
 
         // Cleanup on Shutdown (Ensures old tracks stop so new one starts fresh)
