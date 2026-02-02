@@ -97,6 +97,7 @@ export class PlayScene extends Phaser.Scene {
 
     // Audio
     private bgMusic!: Phaser.Sound.BaseSound;
+    private bgMusic2!: Phaser.Sound.BaseSound;
     private shootSound!: Phaser.Sound.BaseSound;
     private bossEntrySound!: Phaser.Sound.BaseSound;
     private musicBtn!: Phaser.GameObjects.Text;
@@ -168,6 +169,34 @@ export class PlayScene extends Phaser.Scene {
                 if (this.bg) this.bg.setVisible(false);
             }
         });
+
+        // 3. Music Crossfade: Fade OUT bgMusic, Fade IN bgMusic2
+        if (this.isMusicPlaying && this.bgMusic && this.bgMusic2) {
+            // Start playing bgMusic2 at volume 0
+            if (!this.bgMusic2.isPlaying) {
+                this.bgMusic2.play();
+                (this.bgMusic2 as Phaser.Sound.WebAudioSound).setVolume(0);
+            }
+
+            // Fade out first track
+            this.tweens.add({
+                targets: this.bgMusic,
+                volume: 0,
+                duration: 2000,
+                ease: 'Linear',
+                onComplete: () => {
+                    if (this.bgMusic) this.bgMusic.stop();
+                }
+            });
+
+            // Fade in second track
+            this.tweens.add({
+                targets: this.bgMusic2,
+                volume: 0.3,
+                duration: 2000,
+                ease: 'Linear'
+            });
+        }
 
         /* Removed old logic: */
 
@@ -659,6 +688,7 @@ export class PlayScene extends Phaser.Scene {
             this.bossEntrySound = this.sound.add("bossEntry", { volume: 0.8 });
         }
         this.bgMusic = this.sound.add("music", { loop: true, volume: 0.3 });
+        this.bgMusic2 = this.sound.add("music2", { loop: true, volume: 0.3 });
 
         // Music Persistence Logic
         const storedMusicState = this.registry.get('musicEnabled');
@@ -674,9 +704,10 @@ export class PlayScene extends Phaser.Scene {
             this.bgMusic.play();
         }
 
-        // Cleanup on Shutdown (Ensures old track stops so new one starts fresh)
+        // Cleanup on Shutdown (Ensures old tracks stop so new one starts fresh)
         this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => {
             if (this.bgMusic) this.bgMusic.stop();
+            if (this.bgMusic2) this.bgMusic2.stop();
         });
 
         // Music Toggle Button (Bottom Center, below Pause)
@@ -2272,6 +2303,7 @@ export class PlayScene extends Phaser.Scene {
         item.setScale(0.45);
         item.setVelocityY(150);
         item.setDepth(8);
+        item.clearTint(); // [NEW] Ensure no tint overrides the SVG colors
 
         this.tweens.add({
             targets: item,
