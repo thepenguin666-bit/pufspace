@@ -224,6 +224,7 @@ export class PlayScene extends Phaser.Scene {
         this.tripleShotTimer = 0;
 
         // Reset Transition State
+        this.isInvulnerable = false;
         this.isTransitioning = false;
         this.transitionPending = false;
         this.isBg2Active = false;
@@ -1778,7 +1779,7 @@ export class PlayScene extends Phaser.Scene {
 
         // ENABLE COLLISION: Ship vs Boss Body (IMMUNE - No Damage)
         this.physics.add.overlap(this.ship, this.boss, (ship, boss) => {
-            // Do nothing - Immunity as requested
+            // Do nothing - Immunity as requested by USER
         });
 
         // ENABLE COLLISION: Projectiles vs Boss Lasers (Mutually Destroy)
@@ -2052,6 +2053,7 @@ export class PlayScene extends Phaser.Scene {
     killBoss() {
         this.bossState = "HIDDEN";
         this.bossDefeated = true; // Mark as permanently defeated
+        this.spawnHeal(); // [NEW] Spawn heal for recovery as requested
         const bx = this.boss.x;
         const by = this.boss.y;
 
