@@ -104,6 +104,96 @@ export class PlayScene extends Phaser.Scene {
     private isMusicPlaying: boolean = false;
     private bossScaleFactor: number = 1;
 
+    // Background Transition
+    private bossSpawnTimer?: Phaser.Time.TimerEvent;
+    private bossDefeated: boolean = false;
+    private bg2!: Phaser.GameObjects.TileSprite;
+    private transitionBg!: Phaser.GameObjects.Image; // Kept for type safety though unused now
+    private isTransitioning: boolean = false;
+    private transitionPending: boolean = false;
+    private isBg2Active: boolean = false;
+    private lightningTimer!: Phaser.Time.TimerEvent;
+    private rainParticles!: Phaser.GameObjects.Particles.ParticleEmitter;
+
+    startLevelTransition() {
+        if (this.isTransitioning || this.transitionPending || this.isBg2Active) return;
+        this.transitionPending = true;
+
+        // 1. Stop Effects Immediately
+        if (this.lightningTimer) this.lightningTimer.remove();
+        if (this.bgHighlight) this.bgHighlight.setAlpha(0);
+        if (this.rainParticles) this.rainParticles.stop();
+    }
+
+    private startSeamTransition() {
+        this.isTransitioning = true;
+        this.transitionPending = false;
+
+        // 1. Init Second Background (bg2)
+        const bg2t = this.textures.get("bg2");
+        if (!bg2t || bg2t.key === "__MISSING") {
+            // Fallback
+            this.isTransitioning = false;
+            this.isBg2Active = true;
+            return;
+        }
+
+        const bg2w = bg2t.getSourceImage().width;
+        const scale = DESIGN_WIDTH / bg2w;
+        const bg2s = DESIGN_WIDTH / bg2w; // tile scale
+
+        this.bg2 = this.add.tileSprite(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, "bg2")
+            .setOrigin(0)
+            .setTileScale(bg2s)
+            .setDepth(-9) // Above bg (-10)
+            .setAlpha(0); // Start invisible
+
+        // 2. Crossfade: Fade OUT bg, Fade IN bg2
+        this.tweens.add({
+            targets: this.bg2,
+            alpha: 1,
+            duration: 2000,
+            ease: 'Linear'
+        });
+
+        this.tweens.add({
+            targets: this.bg,
+            alpha: 0,
+            duration: 2000,
+            ease: 'Linear',
+            onComplete: () => {
+                // Transition Complete
+                this.isTransitioning = false;
+                this.isBg2Active = true;
+                if (this.bg) this.bg.setVisible(false);
+            }
+        });
+
+        /* Removed old logic: */
+
+
+
+
+        // const bg2w
+        // const bg2s
+        // const bg2h
+
+        /* DEAD BLOCK */
+
+        // Note: For bg2 we use TileSprite usually centered or tiled. 
+        // We set it as a strip here. DESIGN_HEIGHT matches screen. 
+        // We want it to be "physically" there.
+        // We actully want bg2 to be just a Texture for the transition? 
+        // No, TileSprite is fine, just set y correctly. 
+        // Actually, if we want it to Scroll later, TileSprite is best.
+        // Position: 
+        // 1to2 Top is at: -h * scale
+        // bg2 Bottom should be at: 1to2 Top.
+        // bg2 is DESIGN_HEIGHT tall (screen size).
+        // So bg2 Top = (1to2.y) - bg2.height.
+        /* DEAD LINE */
+    }
+
     private isInvulnerable: boolean = false;
 
     constructor() {
@@ -119,6 +209,12 @@ export class PlayScene extends Phaser.Scene {
         this.lastFired = 0;
         this.bossState = "HIDDEN";
         this.isBossEnraged = false;
+        // Correctly reset boss defeat state for full restart
+        this.bossDefeated = false;
+        if (this.bossSpawnTimer) {
+            this.bossSpawnTimer.remove(false);
+            this.bossSpawnTimer = undefined;
+        }
         // Full Reset for Restart
         this.isPaused = false;
         this.stamina = this.maxStamina;
@@ -126,6 +222,20 @@ export class PlayScene extends Phaser.Scene {
         this.isTripleShotActive = false;
         this.boostTimer = 0;
         this.tripleShotTimer = 0;
+
+        // Reset Transition State
+        this.isTransitioning = false;
+        this.transitionPending = false;
+        this.isBg2Active = false;
+        if (this.bg2) this.bg2.destroy();
+        if (this.bg && this.bg.active) {
+            this.bg.tilePositionY = 0;
+            this.bg.y = 0;
+        }
+
+        if (this.transitionBg) this.transitionBg.destroy();
+        if (this.lightningTimer) this.lightningTimer.remove();
+
         if (this.ship) {
             this.ship.clearTint();
             this.ship.setAlpha(1);
@@ -168,7 +278,8 @@ export class PlayScene extends Phaser.Scene {
             .setBlendMode(Phaser.BlendModes.ADD);
 
         // Flash sequence every 10 seconds
-        this.time.addEvent({
+        // Flash sequence every 10 seconds
+        this.lightningTimer = this.time.addEvent({
             delay: 10000,
             loop: true,
             callback: () => {
@@ -199,7 +310,7 @@ export class PlayScene extends Phaser.Scene {
         });
 
         // Rain particles
-        const particles = this.add.particles(0, 0, "rain", {
+        this.rainParticles = this.add.particles(0, 0, "rain", {
             x: { min: -100, max: DESIGN_WIDTH + 300 },
             y: { min: -100, max: -50 },
             lifespan: 2200,
@@ -362,7 +473,13 @@ export class PlayScene extends Phaser.Scene {
         this.scheduleNextHeal();
 
         // Trigger Boss Battle (Test: After 15 seconds)
-        this.time.delayedCall(15000, () => this.spawnBoss());
+        // Store the timer so we can cancel it if boss spawns early
+        this.bossSpawnTimer = this.time.delayedCall(15000, () => {
+            // Only spawn if not defeated and not already visible
+            if (!this.bossDefeated && this.bossState === "HIDDEN") {
+                this.spawnBoss();
+            }
+        });
 
         // UI: Health
         // this.healthText = this.add.text(20, 20, "HP: 10", {
@@ -441,6 +558,21 @@ export class PlayScene extends Phaser.Scene {
                 cheatBtn.setText(this.isGodMode ? "CHEAT: ON" : "CHEAT: OFF");
                 cheatBtn.setBackgroundColor(this.isGodMode ? "#00ff00" : "#ff0000");
                 this.ship.setTint(this.isGodMode ? 0x00ff00 : 0xffffff); // Visual Indicator
+            });
+
+        // Debug: Insta-Kill Boss (Set HP to 1)
+        this.add.text(10, 180, "BOSS 1HP", {
+            fontSize: '12px',
+            backgroundColor: '#ff00ff'
+        })
+            .setDepth(300)
+            .setInteractive({ useHandCursor: true })
+            .on('pointerdown', () => {
+                if (this.boss && this.boss.active && this.bossState !== "HIDDEN") {
+                    this.boss.setData('health', 1);
+                    this.bossHealth = 1;
+                    console.log("Boss HP set to 1");
+                }
             });
 
         // UI: Game Over
@@ -1021,6 +1153,39 @@ export class PlayScene extends Phaser.Scene {
 
         if (this.isGameOver || this.isPaused || this.isTipActive) return;
 
+        // --- Background Scrolling Logic ---
+        const scrollSpeed = 0.1 * dt; // Adjust speed as needed
+
+        if (this.isBg2Active && this.bg2 && this.bg2.active) {
+            // New Level Scroll
+            this.bg2.tilePositionY -= scrollSpeed;
+        } else if (this.isTransitioning) {
+            // Physical Slide Down (Transition)
+            this.bg.y += scrollSpeed;
+            if (this.transitionBg) this.transitionBg.y += scrollSpeed;
+            if (this.bg2) this.bg2.y += scrollSpeed;
+
+            // Check if Transition Done
+            if (this.bg2.y >= 0) {
+                this.bg2.y = 0;
+                this.isTransitioning = false;
+                this.isBg2Active = true;
+
+                // Cleanup
+                if (this.bg) this.bg.setVisible(false); // Hide old
+                if (this.transitionBg) this.transitionBg.destroy();
+            }
+        } else if (this.bg && this.bg.active) {
+            // Normal Scroll (1.png)
+            if (this.transitionPending) {
+                this.bg.tilePositionY -= scrollSpeed;
+                // Immediate Crossfade (as requested by User)
+                this.startSeamTransition();
+            } else {
+                this.bg.tilePositionY -= scrollSpeed;
+            }
+        }
+
         if (this.bossState !== "HIDDEN") {
             this.updateBoss(time, dt);
         }
@@ -1460,8 +1625,14 @@ export class PlayScene extends Phaser.Scene {
     }
 
     spawnBoss() {
-        if (this.bossState !== "HIDDEN") return;
+        if (this.bossState !== "HIDDEN" || this.bossDefeated) return;
         this.bossState = "ENTERING";
+
+        // Cancel auto-spawn if manually triggered
+        if (this.bossSpawnTimer) {
+            this.bossSpawnTimer.remove(false);
+            this.bossSpawnTimer = undefined;
+        }
         // Reset health to max when spawning
         this.bossHealth = this.bossMaxHealth;
         this.isBossEnraged = false;
@@ -1880,6 +2051,7 @@ export class PlayScene extends Phaser.Scene {
 
     killBoss() {
         this.bossState = "HIDDEN";
+        this.bossDefeated = true; // Mark as permanently defeated
         const bx = this.boss.x;
         const by = this.boss.y;
 
@@ -1888,6 +2060,9 @@ export class PlayScene extends Phaser.Scene {
             this.boss.setActive(false);
             this.createExplosion(bx, by);
         }
+
+        // Start Background Transition
+        this.startLevelTransition();
 
         if (this.bossBG) {
             const bgX = this.bossBG.x;
@@ -2023,7 +2198,7 @@ export class PlayScene extends Phaser.Scene {
 
     spawnBoost() {
         const x = this.getValidSpawnX();
-        if (x === null) return; // Skip if no space
+        if (x === null) return;
 
         const boost = this.boosts.create(x, -50, "boost") as Phaser.Physics.Arcade.Image;
         boost.setScale(0.3);
