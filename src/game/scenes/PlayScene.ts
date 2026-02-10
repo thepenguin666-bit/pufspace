@@ -2293,6 +2293,13 @@ export class PlayScene extends Phaser.Scene {
 
         this.score += 5000;
         this.scoreText.setText("SCORE: " + this.score);
+
+        // Music Switch to Level 2
+        if (this.isMusicPlaying) {
+            this.bgMusic.stop();
+            this.bgMusic2.play();
+            (this.bgMusic2 as Phaser.Sound.WebAudioSound).setVolume(0.3);
+        }
     }
 
     togglePause() {
