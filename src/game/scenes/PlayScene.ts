@@ -1818,7 +1818,7 @@ export class PlayScene extends Phaser.Scene {
         if (this.isBg2Active && this.bossState === "HIDDEN") {
             const now = time;
             // Spawn every 5 seconds (as requested)
-            if (now > this.lastFireballSpawn + 5000) { // Changed from 2500 to 5000
+            if (now > this.lastFireballSpawn + 5000) {
                 this.spawnFireballEnemy();
                 this.lastFireballSpawn = now;
             }
@@ -2762,32 +2762,9 @@ export class PlayScene extends Phaser.Scene {
             // 2. Rotation
             enemy.angle += enemy.getData('rotSpeed');
 
-            // 3. Attack: Spiral Fire (Every 333ms = 3 shots/sec)
-            const lastShot = enemy.getData('lastShot') || 0;
-            if (time - lastShot > 333) {
-                // Fire!
-                enemy.setData('lastShot', time);
-
-                let angleDeg = enemy.getData('shotAngle');
-                const rad = Phaser.Math.DegToRad(angleDeg);
-                const speed = 125; // Half speed (was 250)
-
-                const proj = this.fireballProjectiles.create(enemy.x, enemy.y, 'fireball-projectile') as Phaser.Physics.Arcade.Image;
-                if (proj) {
-                    proj.setScale(0.9); // 1.5x bigger (was 0.6)
-                    proj.setDepth(9);
-                    proj.setVelocity(Math.cos(rad) * speed, Math.sin(rad) * speed);
-                }
-
-                // Increment angle for spiral effect (180 degree downward arc)
-                // 0 is Right, 90 is Down, 180 is Left.
-                // Cycle: 0 -> 180 -> 0
-                angleDeg += 25;
-                if (angleDeg > 180) {
-                    angleDeg = 0;
-                }
-                enemy.setData('shotAngle', angleDeg);
-            }
+            // 3. Attack: SPIRAL FIRE DISABLED (User Request)
+            // const lastShot = enemy.getData('lastShot') || 0;
+            // if (time - lastShot > 1000) { ... }
         }
 
         // Cleanup Projectiles
