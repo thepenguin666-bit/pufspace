@@ -175,35 +175,8 @@ export class PlayScene extends Phaser.Scene {
             }
         });
 
-        // 3. Music Crossfade: Fade OUT bgMusic, Fade IN bgMusic2
-        if (this.isMusicPlaying && this.bgMusic && this.bgMusic2) {
-            // Resume bgMusic2 (was pre-unlocked and paused in create())
-            if (this.bgMusic2.isPaused) {
-                this.bgMusic2.resume();
-            } else if (!this.bgMusic2.isPlaying) {
-                this.bgMusic2.play();
-            }
-            (this.bgMusic2 as Phaser.Sound.WebAudioSound).setVolume(0);
-
-            // Fade out first track
-            this.tweens.add({
-                targets: this.bgMusic,
-                volume: 0,
-                duration: 2000,
-                ease: 'Linear',
-                onComplete: () => {
-                    if (this.bgMusic) this.bgMusic.stop();
-                }
-            });
-
-            // Fade in second track
-            this.tweens.add({
-                targets: this.bgMusic2,
-                volume: 0.3,
-                duration: 2000,
-                ease: 'Linear'
-            });
-        }
+        // 3. Music Crossfade REMOVED to prevent conflict with killBoss switch.
+        // Music is now handled in killBoss and create().
 
         /* Removed old logic: */
 
@@ -800,13 +773,20 @@ export class PlayScene extends Phaser.Scene {
             .setInteractive({ useHandCursor: true })
             .on('pointerdown', () => {
                 if (this.isMusicPlaying) {
-                    this.bgMusic.stop();
+                    if (this.bgMusic) this.bgMusic.stop();
+                    if (this.bgMusic2) this.bgMusic2.stop();
                     this.musicBtn.setText("♫ OFF");
                     this.musicBtn.setColor("#ff0000");
                     this.isMusicPlaying = false;
                     this.registry.set('musicEnabled', false); // Save State
                 } else {
-                    this.bgMusic.play();
+                    // Turn ON: Decide which track
+                    if (this.bossDefeated || this.isBg2Active) {
+                        this.bgMusic2.play();
+                        (this.bgMusic2 as Phaser.Sound.WebAudioSound).setVolume(0.3);
+                    } else {
+                        this.bgMusic.play();
+                    }
                     this.musicBtn.setText("♫ ON");
                     this.musicBtn.setColor("#00ff00");
                     this.isMusicPlaying = true;
