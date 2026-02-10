@@ -80,6 +80,11 @@ export class PlayScene extends Phaser.Scene {
     private dragons!: Phaser.Physics.Arcade.Group;
     private dragonLasers!: Phaser.Physics.Arcade.Group;
     private lastDragonSpawn: number = 0;
+
+    // Fireball Enemy (Level 2)
+    private fireballEnemies!: Phaser.Physics.Arcade.Group;
+    private fireballProjectiles!: Phaser.Physics.Arcade.Group;
+    private lastFireballSpawn: number = 0;
     private bossHealthBarBG!: Phaser.GameObjects.Rectangle;
     private bossHealthBarFill!: Phaser.GameObjects.Rectangle;
     private batVomitEvent?: Phaser.Time.TimerEvent;
@@ -226,7 +231,11 @@ export class PlayScene extends Phaser.Scene {
         this.lastDragonSpawn = 0;
         // Groups will be re-created below, just ensure references don't block logic if checked early
         this.dragons = undefined as any;
+        this.dragons = undefined as any;
         this.dragonLasers = undefined as any;
+        this.fireballEnemies = undefined as any;
+        this.fireballProjectiles = undefined as any;
+        this.lastFireballSpawn = 0;
 
         // Full Reset for Restart
         this.isPaused = false;
@@ -797,6 +806,10 @@ export class PlayScene extends Phaser.Scene {
         this.shields = this.physics.add.group();
         this.scheduleNextShield();
 
+        // Fireball Enemy Groups (Level 2)
+        this.fireballEnemies = this.physics.add.group();
+        this.fireballProjectiles = this.physics.add.group();
+
         // UI: Boost Timer Bar (Top Right)
         this.boostUIContainer = this.add.container(DESIGN_WIDTH - 100, 40).setDepth(100).setVisible(false);
         const boostIcon = this.add.image(0, 0, "boost").setScale(0.15).setOrigin(0.5);
@@ -840,6 +853,11 @@ export class PlayScene extends Phaser.Scene {
             this.handleProjectileHitDragon(proj as Phaser.Physics.Arcade.Image, dragon as Phaser.Physics.Arcade.Sprite);
         });
 
+        // Physics: Projectiles vs Fireball Enemies
+        this.physics.add.overlap(this.projectiles, this.fireballEnemies, (proj, enemy) => {
+            this.handleProjectileHitFireball(proj as Phaser.Physics.Arcade.Image, enemy as Phaser.Physics.Arcade.Sprite);
+        });
+
         // Physics: Ship vs Dragons
         this.physics.add.overlap(this.ship, this.dragons, (ship, dragon) => {
             this.handlePlayerHit(dragon as any, true);
@@ -849,6 +867,40 @@ export class PlayScene extends Phaser.Scene {
         this.physics.add.overlap(this.ship, this.dragonLasers, (ship, laser) => {
             this.handlePlayerHit(laser as any, true);
             (laser as Phaser.Physics.Arcade.Image).destroy();
+        });
+
+        // Physics: Ship vs Fireball Projectiles
+        this.physics.add.overlap(this.ship, this.fireballProjectiles, (ship, proj) => {
+            this.handlePlayerHit(proj as any, true);
+            (proj as Phaser.Physics.Arcade.Image).destroy();
+        });
+
+        // Physics: Projectiles vs Fireball Projectiles (Destructible)
+        this.physics.add.overlap(this.projectiles, this.fireballProjectiles, (pProj, eProj) => {
+            const playerProj = pProj as Phaser.Physics.Arcade.Image;
+            const enemyProj = eProj as Phaser.Physics.Arcade.Image;
+
+            // Create explosion at enemy projectile location BEFORE destroying
+            this.createExplosion(enemyProj.x, enemyProj.y);
+
+            playerProj.destroy();
+            enemyProj.destroy();
+        });
+
+        // Physics: Projectiles vs Dragon Fireballs (fire.png) (Destructible)
+        this.physics.add.overlap(this.projectiles, this.dragonLasers, (pProj, dLaser) => {
+            const playerProj = pProj as Phaser.Physics.Arcade.Image;
+            const dragonLaser = dLaser as Phaser.Physics.Arcade.Image;
+
+            this.createExplosion(dragonLaser.x, dragonLaser.y);
+
+            playerProj.destroy();
+            dragonLaser.destroy();
+        });
+
+        // Physics: Ship vs Fireball Enemies
+        this.physics.add.overlap(this.ship, this.fireballEnemies, (ship, enemy) => {
+            this.handlePlayerHit(enemy as any, true);
         });
 
         // Physics: Ship vs Boost
@@ -1761,6 +1813,17 @@ export class PlayScene extends Phaser.Scene {
                 }
             }
         }
+
+        // Fireball Enemy Logic (Level 2 Only)
+        if (this.isBg2Active && this.bossState === "HIDDEN") {
+            const now = time;
+            // Spawn every 5 seconds (as requested)
+            if (now > this.lastFireballSpawn + 5000) { // Changed from 2500 to 5000
+                this.spawnFireballEnemy();
+                this.lastFireballSpawn = now;
+            }
+        }
+        this.updateFireballEnemies(time, dt);
     }
 
     spawnBoss() {
@@ -2618,6 +2681,126 @@ export class PlayScene extends Phaser.Scene {
             this.time.delayedCall(100, () => {
                 if (dragon.active) dragon.clearTint();
             });
+        }
+    }
+
+    handleProjectileHitFireball(proj: Phaser.Physics.Arcade.Image, enemy: Phaser.Physics.Arcade.Sprite) {
+        if (!enemy.active || !proj.active) return;
+
+        // Prevent damage if enemy is off-screen (top)
+        if (enemy.y < 0) {
+            proj.destroy();
+            return;
+        }
+
+        proj.destroy();
+        this.createExplosion(proj.x, proj.y);
+
+        const hp = enemy.getData('health') - 1;
+        if (hp <= 0) {
+            this.createExplosion(enemy.x, enemy.y);
+            enemy.destroy();
+            this.score += 75; // Slightly more than Dragon (50)
+            this.scoreText.setText("SCORE: " + this.score);
+        } else {
+            enemy.setData('health', hp);
+            enemy.setTint(0xff0000);
+            this.time.delayedCall(100, () => {
+                if (enemy.active) enemy.clearTint();
+            });
+        }
+    }
+
+    spawnFireballEnemy() {
+        // Validation: Only spawn if in Level 2 (Bg2 active) and NOT in Boss Fight
+        if (!this.isBg2Active || (this.bossState !== "HIDDEN" && this.bossState !== "ENTERING")) return;
+
+        const x = Phaser.Math.Between(50, DESIGN_WIDTH - 50);
+        const y = -100;
+        const enemy = this.fireballEnemies.create(x, y, 'fireball-enemy') as Phaser.Physics.Arcade.Sprite;
+
+        enemy.setScale(0.8);
+        enemy.setData('health', 4);
+        enemy.setDepth(10);
+
+        // Movement Parameters
+        enemy.setVelocityY(40); // Much slower (was 100)
+        enemy.setData('startX', x);
+        enemy.setData('amp', Phaser.Math.Between(50, 150)); // Sine wave amplitude
+        enemy.setData('freq', Phaser.Math.FloatBetween(0.002, 0.005)); // Sine wave frequency
+        enemy.setData('rotSpeed', Phaser.Math.FloatBetween(2, 5)); // Rotation speed
+        enemy.setData('shotAngle', 0); // For spiral pattern
+
+        if (enemy.body) {
+            (enemy.body as Phaser.Physics.Arcade.Body).setSize(enemy.width * 0.7, enemy.height * 0.7);
+        }
+    }
+
+    updateFireballEnemies(time: number, dt: number) {
+        if (!this.fireballEnemies) return;
+
+        const enemies = this.fireballEnemies.getChildren() as Phaser.Physics.Arcade.Sprite[];
+
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            const enemy = enemies[i];
+            if (!enemy.active) continue;
+
+            // Cleanup
+            if (enemy.y > DESIGN_HEIGHT + 100) {
+                enemy.destroy();
+                continue;
+            }
+
+            // 1. Movement: Down (VelocityY handled by physics) + Sine Wave X
+            const startX = enemy.getData('startX');
+            const amp = enemy.getData('amp');
+            const freq = enemy.getData('freq');
+
+            // X = StartX + Sin(Time * Freq) * Amp
+            enemy.setX(startX + Math.sin(time * freq) * amp);
+
+            // 2. Rotation
+            enemy.angle += enemy.getData('rotSpeed');
+
+            // 3. Attack: Spiral Fire (Every 333ms = 3 shots/sec)
+            const lastShot = enemy.getData('lastShot') || 0;
+            if (time - lastShot > 333) {
+                // Fire!
+                enemy.setData('lastShot', time);
+
+                let angleDeg = enemy.getData('shotAngle');
+                const rad = Phaser.Math.DegToRad(angleDeg);
+                const speed = 125; // Half speed (was 250)
+
+                const proj = this.fireballProjectiles.create(enemy.x, enemy.y, 'fireball-projectile') as Phaser.Physics.Arcade.Image;
+                if (proj) {
+                    proj.setScale(0.9); // 1.5x bigger (was 0.6)
+                    proj.setDepth(9);
+                    proj.setVelocity(Math.cos(rad) * speed, Math.sin(rad) * speed);
+                }
+
+                // Increment angle for spiral effect (180 degree downward arc)
+                // 0 is Right, 90 is Down, 180 is Left.
+                // Cycle: 0 -> 180 -> 0
+                angleDeg += 25;
+                if (angleDeg > 180) {
+                    angleDeg = 0;
+                }
+                enemy.setData('shotAngle', angleDeg);
+            }
+        }
+
+        // Cleanup Projectiles
+        const projs = this.fireballProjectiles.getChildren() as Phaser.Physics.Arcade.Image[];
+        for (let i = projs.length - 1; i >= 0; i--) {
+            const p = projs[i];
+            if (p.active) {
+                // Destroy if off screen (with padding) - Circular check?
+                // Just use a wide box check
+                if (p.y < -100 || p.y > DESIGN_HEIGHT + 100 || p.x < -100 || p.x > DESIGN_WIDTH + 100) {
+                    p.destroy();
+                }
+            }
         }
     }
 }

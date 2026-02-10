@@ -82,6 +82,8 @@ export class BootScene extends Phaser.Scene {
         });
         this.load.image("dragon-fire", "/dragon fire.png?v=" + version);
         this.load.image("blue-fireball", "/fire.png?v=" + version);
+        this.load.image("fireball-enemy", "/fireball.png?v=" + version);
+        this.load.image("fireball-projectile", "/fireball2.png?v=" + version);
 
     }
 
