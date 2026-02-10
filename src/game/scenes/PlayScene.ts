@@ -1224,6 +1224,12 @@ export class PlayScene extends Phaser.Scene {
 
     handleProjectileHitBat(projectile: Phaser.Physics.Arcade.Image, bat: Phaser.Physics.Arcade.Sprite) {
         if (!projectile.active || !bat.active) return;
+
+        // Prevent damage if enemy is off-screen (top)
+        if (bat.y < 0) {
+            projectile.destroy();
+            return;
+        }
         projectile.destroy();
         const currentHealth = bat.getData('health') || 1;
         const newHealth = currentHealth - 1;
@@ -1458,7 +1464,7 @@ export class PlayScene extends Phaser.Scene {
         const projs = this.projectiles.getChildren();
         for (let i = projs.length - 1; i >= 0; i--) {
             const child = projs[i] as Phaser.Physics.Arcade.Image;
-            if (child.active && child.y < -50) child.destroy();
+            if (child.active && child.y < 0) child.destroy(); // Destroy immediately at top
         }
 
         const baseSpeed = 1.35 * dt;
@@ -2537,7 +2543,7 @@ export class PlayScene extends Phaser.Scene {
         // Dragon should be bigger than bat but smaller than boss.
         // 0.4 scale -> 126px width. Good.
         dragon.setData('health', 6);
-        dragon.setVelocityY(Phaser.Math.Between(80, 120)); // Slow vertical movement (User requested "diğer düşmanlara oranla daha yavaş")
+        dragon.setVelocityY(Phaser.Math.Between(120, 180)); // 1.5x Speed (120-180)
         // Bat is 200-400. Ghost is 80-150. Dragon is boss-like? 80-120 is slow.
         dragon.setDepth(10);
 
@@ -2603,6 +2609,12 @@ export class PlayScene extends Phaser.Scene {
 
     handleProjectileHitDragon(proj: Phaser.Physics.Arcade.Image, dragon: Phaser.Physics.Arcade.Sprite) {
         if (!dragon.active || !proj.active) return;
+
+        // Prevent damage if dragon is off-screen (top)
+        if (dragon.y < 0) {
+            proj.destroy(); // Destroy projectile but don't damage dragon
+            return;
+        }
 
         proj.destroy();
         this.createExplosion(proj.x, proj.y); // Use existing explosion visual
