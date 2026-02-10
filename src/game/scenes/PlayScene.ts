@@ -75,6 +75,11 @@ export class PlayScene extends Phaser.Scene {
     private bossFG!: Phaser.GameObjects.Image;
     private bossLasers!: Phaser.Physics.Arcade.Group;
     private bossNameText!: Phaser.GameObjects.Text;
+
+    // Dragon Enemy
+    private dragons!: Phaser.Physics.Arcade.Group;
+    private dragonLasers!: Phaser.Physics.Arcade.Group;
+    private lastDragonSpawn: number = 0;
     private bossHealthBarBG!: Phaser.GameObjects.Rectangle;
     private bossHealthBarFill!: Phaser.GameObjects.Rectangle;
     private batVomitEvent?: Phaser.Time.TimerEvent;
@@ -246,6 +251,12 @@ export class PlayScene extends Phaser.Scene {
             this.bossSpawnTimer.remove(false);
             this.bossSpawnTimer = undefined;
         }
+        this.bossDefeated = false;
+        // Dragon Reset
+        this.lastDragonSpawn = 0;
+        if (this.dragons) this.dragons.clear(true, true);
+        if (this.dragonLasers) this.dragonLasers.clear(true, true);
+
         // Full Reset for Restart
         this.isPaused = false;
         this.stamina = this.maxStamina;
@@ -423,6 +434,17 @@ export class PlayScene extends Phaser.Scene {
         // Boss Lasers Group
         this.bossLasers = this.physics.add.group();
 
+        // Dragon Groups
+        this.dragons = this.physics.add.group({
+            classType: Phaser.Physics.Arcade.Sprite,
+            maxSize: 10,
+            runChildUpdate: true
+        });
+        this.dragonLasers = this.physics.add.group({
+            classType: Phaser.Physics.Arcade.Image,
+            maxSize: 50
+        });
+
         // Input
         if (this.input.keyboard) {
             this.fireKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
@@ -498,6 +520,27 @@ export class PlayScene extends Phaser.Scene {
             this.time.delayedCall(Phaser.Math.Between(2500, 5000), spawnGhost);
         };
         spawnGhost();
+
+        // Dragon Animation
+        this.anims.create({
+            key: 'dragon-fly',
+            frames: this.anims.generateFrameNumbers('dragon', { start: 0, end: 3 }),
+            frameRate: 8,
+            repeat: -1,
+            yoyo: true
+        });
+
+        // Spawn Dragon Logic (Polled in update, but we can set a timer too or use update)
+        // I'll add it to update loop or a repeating timer that checks bg2 status
+        this.time.addEvent({
+            delay: 2000,
+            loop: true,
+            callback: () => {
+                if (this.isBg2Active && !this.isGameOver && !this.bossState.startsWith("FIGHT")) {
+                    this.spawnDragon();
+                }
+            }
+        });
 
         // Spawn Power-ups (Dynamic Scaling)
         this.scheduleNextBoost();
@@ -784,6 +827,22 @@ export class PlayScene extends Phaser.Scene {
         });
         this.physics.add.overlap(this.projectiles, this.ghosts, (proj, ghost) => {
             this.handleProjectileHitBat(proj as Phaser.Physics.Arcade.Image, ghost as Phaser.Physics.Arcade.Sprite);
+        });
+
+        // Physics: Projectiles vs Dragons
+        this.physics.add.overlap(this.projectiles, this.dragons, (proj, dragon) => {
+            this.handleProjectileHitDragon(proj as Phaser.Physics.Arcade.Image, dragon as Phaser.Physics.Arcade.Sprite);
+        });
+
+        // Physics: Ship vs Dragons
+        this.physics.add.overlap(this.ship, this.dragons, (ship, dragon) => {
+            this.handlePlayerHit(dragon as any, true);
+        });
+
+        // Physics: Ship vs Dragon Lasers
+        this.physics.add.overlap(this.ship, this.dragonLasers, (ship, laser) => {
+            this.handlePlayerHit(laser as any, true);
+            (laser as Phaser.Physics.Arcade.Image).destroy();
         });
 
         // Physics: Ship vs Boost
@@ -1661,6 +1720,27 @@ export class PlayScene extends Phaser.Scene {
                 }
             }
         }
+
+        // Dragon Lasers Cleanup (Prevent Freeze)
+        if (this.dragonLasers) {
+            const dLasers = this.dragonLasers.getChildren();
+            for (let i = dLasers.length - 1; i >= 0; i--) {
+                const child = dLasers[i] as Phaser.Physics.Arcade.Image;
+                if (child.active && child.y > DESIGN_HEIGHT + 100) {
+                    child.destroy();
+                }
+            }
+        }
+        // Dragon Cleanup (Prevent Infinite Loops & Freeze)
+        if (this.dragons) {
+            const dragons = this.dragons.getChildren();
+            for (let i = dragons.length - 1; i >= 0; i--) {
+                const child = dragons[i] as Phaser.Physics.Arcade.Sprite;
+                if (child.active && child.y > DESIGN_HEIGHT + 100) {
+                    child.destroy();
+                }
+            }
+        }
     }
 
     spawnBoss() {
@@ -2410,6 +2490,101 @@ export class PlayScene extends Phaser.Scene {
             (this.ship as any).preFX.addGlow(0xffff00, 4, 0, false, 0.1, 10);
         } else {
             this.ship.setTint(0xffff00);
+        }
+    }
+    spawnDragon() {
+        // Spawn at random X, top Y
+        const x = Phaser.Math.Between(50, DESIGN_WIDTH - 50);
+        const y = -100; // Start above screen
+        const dragon = this.dragons.create(x, y, 'dragon') as Phaser.Physics.Arcade.Sprite;
+        dragon.play('dragon-fly');
+        dragon.setScale(0.4); // Adjust scale (1268/4 = 317w. 317*0.4 ~= 126px. Similar to Boss? No, smaller. Boss is Huge.)
+        // Boss is 600px * scale? Ship is 60px. Bat is 317*0.2 = 60px.
+        // Dragon should be bigger than bat but smaller than boss.
+        // 0.4 scale -> 126px width. Good.
+        dragon.setData('health', 4);
+        dragon.setVelocityY(Phaser.Math.Between(80, 120)); // Slow vertical movement (User requested "diğer düşmanlara oranla daha yavaş")
+        // Bat is 200-400. Ghost is 80-150. Dragon is boss-like? 80-120 is slow.
+        dragon.setDepth(10);
+
+        if (dragon.body) {
+            (dragon.body as Phaser.Physics.Arcade.Body).setSize(dragon.width * 0.6, dragon.height * 0.6);
+        }
+
+        // Attack Logic: Every 2 seconds
+        // Create a recursive attack loop
+        const attackLoop = () => {
+            if (!dragon.active || !this.dragons.contains(dragon)) return;
+
+            // Texture Swap: "Ateş topu ateşleme süresince dragon sprite image dragon fire görseliyle yer değiştirecek"
+            // Stop animation, set texture
+            dragon.stop(); // Stop 'dragon-fly'
+            dragon.setTexture('dragon-fire');
+
+            // Fire 4 shots in quick succession
+            let shotsFired = 0;
+            const burstDelay = 150; // ms between shots in the burst
+
+            const fireNext = () => {
+                if (!dragon.active) return;
+
+                this.fireDragonLaser(dragon);
+                shotsFired++;
+
+                if (shotsFired < 4) {
+                    this.time.delayedCall(burstDelay, fireNext);
+                } else {
+                    // All shots fired. 
+                    // Maintain "firing" texture for a bit? user said "ateşleme durduğunda sprite sheet yeniden belirecek"
+                    // After the last shot, wait a tiny bit then revert.
+                    this.time.delayedCall(200, () => {
+                        if (dragon.active) {
+                            dragon.play('dragon-fly'); // Revert to sprite sheet animation
+                        }
+                    });
+                    // Schedule next attack cycle (2 seconds FROM NOW? or 2s interval?)
+                    // "Her iki saniyede bir" -> Interval.
+                    // I'll schedule the next LOOP call.
+                    this.time.delayedCall(2000, attackLoop);
+                }
+            };
+
+            fireNext();
+        };
+
+        // Start first attack loop after 1 second (so it enters screen first)
+        this.time.delayedCall(1000, attackLoop);
+    }
+
+    fireDragonLaser(dragon: Phaser.Physics.Arcade.Sprite) {
+        if (!dragon.active) return;
+        // "Blue fire ball" -> 'blue-fireball'
+        const laser = this.dragonLasers.create(dragon.x, dragon.y + 40, 'blue-fireball') as Phaser.Physics.Arcade.Image;
+        if (laser) {
+            laser.setVelocityY(400); // Fast projectile
+            laser.setScale(0.5); // User requested half size ("yarı yarıya düşür")
+            laser.setDepth(14);
+        }
+    }
+
+    handleProjectileHitDragon(proj: Phaser.Physics.Arcade.Image, dragon: Phaser.Physics.Arcade.Sprite) {
+        if (!dragon.active || !proj.active) return;
+
+        proj.destroy();
+        this.createExplosion(proj.x, proj.y); // Use existing explosion visual
+
+        const hp = dragon.getData('health') - 1;
+        if (hp <= 0) {
+            this.createExplosion(dragon.x, dragon.y);
+            dragon.destroy();
+            this.score += 50;
+            this.scoreText.setText("SCORE: " + this.score);
+        } else {
+            dragon.setData('health', hp);
+            dragon.setTint(0xff0000);
+            this.time.delayedCall(100, () => {
+                if (dragon.active) dragon.clearTint();
+            });
         }
     }
 }

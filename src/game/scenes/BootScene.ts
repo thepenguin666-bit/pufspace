@@ -75,6 +75,14 @@ export class BootScene extends Phaser.Scene {
         this.load.audio("shoot", "/projectile sounda.mp3");
         this.load.audio("bossEntry", "/goodluck chalenger.mp3");
 
+        // Dragon Enemy Assets
+        this.load.spritesheet("dragon", "/dragon sprite.png?v=" + version, {
+            frameWidth: 317,
+            frameHeight: 319
+        });
+        this.load.image("dragon-fire", "/dragon fire.png?v=" + version);
+        this.load.image("blue-fireball", "/fire.png?v=" + version);
+
     }
 
     create() {
