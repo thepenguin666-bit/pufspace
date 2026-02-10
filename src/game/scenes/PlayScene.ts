@@ -2536,7 +2536,7 @@ export class PlayScene extends Phaser.Scene {
         // Boss is 600px * scale? Ship is 60px. Bat is 317*0.2 = 60px.
         // Dragon should be bigger than bat but smaller than boss.
         // 0.4 scale -> 126px width. Good.
-        dragon.setData('health', 4);
+        dragon.setData('health', 6);
         dragon.setVelocityY(Phaser.Math.Between(80, 120)); // Slow vertical movement (User requested "diğer düşmanlara oranla daha yavaş")
         // Bat is 200-400. Ghost is 80-150. Dragon is boss-like? 80-120 is slow.
         dragon.setDepth(10);
