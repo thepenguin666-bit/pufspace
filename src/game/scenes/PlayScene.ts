@@ -236,7 +236,7 @@ export class PlayScene extends Phaser.Scene {
         super("Play");
     }
 
-    create() {
+    create(data?: { startAtLevel2?: boolean }) {
         // Reset state
         this.health = this.maxHealth;
 
@@ -247,15 +247,13 @@ export class PlayScene extends Phaser.Scene {
         this.isBossEnraged = false;
         // Correctly reset boss defeat state for full restart
         this.bossDefeated = false;
-        if (this.bossSpawnTimer) {
-            this.bossSpawnTimer.remove(false);
-            this.bossSpawnTimer = undefined;
-        }
+        this.bossSpawnTimer = undefined;
         this.bossDefeated = false;
         // Dragon Reset
         this.lastDragonSpawn = 0;
-        if (this.dragons) this.dragons.clear(true, true);
-        if (this.dragonLasers) this.dragonLasers.clear(true, true);
+        // Groups will be re-created below, just ensure references don't block logic if checked early
+        this.dragons = undefined as any;
+        this.dragonLasers = undefined as any;
 
         // Full Reset for Restart
         this.isPaused = false;
@@ -269,12 +267,15 @@ export class PlayScene extends Phaser.Scene {
         this.isInvulnerable = false;
         this.isTransitioning = false;
         this.transitionPending = false;
-        this.isBg2Active = false;
-        if (this.bg2) this.bg2.destroy();
-        if (this.bg && this.bg.active) {
-            this.bg.tilePositionY = 0;
-            this.bg.y = 0;
-        }
+
+        // CHECKPOINT LOGIC
+        const startAtLevel2 = data?.startAtLevel2 || false;
+        this.isBg2Active = startAtLevel2;
+
+        // Reset BG references
+        this.bg = undefined as any;
+        this.bg2 = undefined as any;
+        this.transitionBg = undefined as any;
 
         if (this.transitionBg) this.transitionBg.destroy();
         if (this.lightningTimer) this.lightningTimer.remove();
@@ -288,10 +289,26 @@ export class PlayScene extends Phaser.Scene {
             this.batVomitEvent = undefined;
         }
 
+        // Initialize BG1 (Always created fresh)
         this.bg = this.add
             .tileSprite(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, "background")
             .setOrigin(0)
             .setDepth(-10);
+        this.bg.setVisible(!startAtLevel2);
+
+        // Initialize BG2 if starting there
+        if (startAtLevel2) {
+            const bg2t = this.textures.get("bg2");
+            if (bg2t && bg2t.key !== "__MISSING") {
+                const bg2w = bg2t.getSourceImage().width;
+                const bg2s = DESIGN_WIDTH / bg2w;
+                this.bg2 = this.add.tileSprite(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, "bg2")
+                    .setOrigin(0)
+                    .setTileScale(bg2s)
+                    .setDepth(-9)
+                    .setAlpha(1); // Visible immediately
+            }
+        }
 
         // Disable collision on vertical edges (top/bottom) so enemies can enter/exit
         this.physics.world.setBoundsCollision(true, true, false, false);
@@ -309,8 +326,8 @@ export class PlayScene extends Phaser.Scene {
         if (bgTexture && bgTexture.key !== "__MISSING") {
             const tex = bgTexture.getSourceImage();
             const scale = DESIGN_WIDTH / tex.width;
-            this.bg.setTileScale(scale);
-            this.bgHighlight.setTileScale(scale);
+            if (this.bg) this.bg.setTileScale(scale);
+            if (this.bgHighlight) this.bgHighlight.setTileScale(scale);
         }
 
         // Lightning Flash Effect (Full Screen)
@@ -320,56 +337,59 @@ export class PlayScene extends Phaser.Scene {
             .setDepth(10) // Cover everything
             .setBlendMode(Phaser.BlendModes.ADD);
 
-        // Flash sequence every 10 seconds
-        // Flash sequence every 10 seconds
-        this.lightningTimer = this.time.addEvent({
-            delay: 10000,
-            loop: true,
-            callback: () => {
-                // Phase 1: Illuminate Clouds (0.5s duration)
-                this.tweens.add({
-                    targets: this.bgHighlight,
-                    alpha: { from: 0, to: 0.8 },
-                    duration: 50,
-                    yoyo: true,
-                    hold: 300,
-                    onComplete: () => {
-                        // Phase 2: Full Screen Flash (0.2s duration, lower opacity)
-                        this.tweens.add({
-                            targets: flash,
-                            alpha: { from: 0, to: 0.5 },
-                            duration: 50,
-                            onComplete: () => {
-                                this.tweens.add({
-                                    targets: flash,
-                                    alpha: 0,
-                                    duration: 150
-                                });
-                            }
-                        });
-                    }
-                });
-            }
-        });
+        // Flash sequence every 10 seconds (Only in Level 1)
+        if (!startAtLevel2) {
+            this.lightningTimer = this.time.addEvent({
+                delay: 10000,
+                loop: true,
+                callback: () => {
+                    // Phase 1: Illuminate Clouds (0.5s duration)
+                    this.tweens.add({
+                        targets: this.bgHighlight,
+                        alpha: { from: 0, to: 0.8 },
+                        duration: 50,
+                        yoyo: true,
+                        hold: 300,
+                        onComplete: () => {
+                            // Phase 2: Full Screen Flash (0.2s duration, lower opacity)
+                            this.tweens.add({
+                                targets: flash,
+                                alpha: { from: 0, to: 0.5 },
+                                duration: 50,
+                                onComplete: () => {
+                                    this.tweens.add({
+                                        targets: flash,
+                                        alpha: 0,
+                                        duration: 150
+                                    });
+                                }
+                            });
+                        }
+                    });
+                }
+            });
+        }
 
-        // Rain particles
-        this.rainParticles = this.add.particles(0, 0, "rain", {
-            x: { min: -100, max: DESIGN_WIDTH + 300 },
-            y: { min: -100, max: -50 },
-            lifespan: 2200,
-            speedX: -300,
-            speedY: 700,
-            angle: 335,
-            alpha: { start: 0.25, end: 0, ease: 'Quad.In' },
-            scale: { min: 0.375, max: 0.6 },
-            quantity: 12,
-            frequency: 15,
-            blendMode: 'ADD',
-            emitZone: {
-                type: 'random',
-                source: new Phaser.Geom.Rectangle(-100, -50, DESIGN_WIDTH + 400, 50) as any
-            }
-        }).setDepth(11);
+        // Rain particles (Only in Level 1)
+        if (!startAtLevel2) {
+            this.rainParticles = this.add.particles(0, 0, "rain", {
+                x: { min: -100, max: DESIGN_WIDTH + 300 },
+                y: { min: -100, max: -50 },
+                lifespan: 2200,
+                speedX: -300,
+                speedY: 700,
+                angle: 335,
+                alpha: { start: 0.25, end: 0, ease: 'Quad.In' },
+                scale: { min: 0.375, max: 0.6 },
+                quantity: 12,
+                frequency: 15,
+                blendMode: 'ADD',
+                emitZone: {
+                    type: 'random',
+                    source: new Phaser.Geom.Rectangle(-100, -50, DESIGN_WIDTH + 400, 50) as any
+                }
+            }).setDepth(11);
+        }
 
         this.ship = this.physics.add.image(DESIGN_WIDTH / 2, DESIGN_HEIGHT * 0.7, "ship");
         // Robust Scaling Logic
@@ -451,9 +471,8 @@ export class PlayScene extends Phaser.Scene {
             this.enterKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
         }
 
-        // Spawn Swarm
         const spawnWave = () => {
-            if (this.isGameOver || this.bossState !== "HIDDEN") return;
+            if (this.isGameOver || this.bossState !== "HIDDEN" || this.isBg2Active) return;
             const count = Phaser.Math.Between(2, 5);
             const spawnedX: number[] = [];
             const minGap = 80;
@@ -495,9 +514,8 @@ export class PlayScene extends Phaser.Scene {
         };
         spawnWave();
 
-        // Spawn Ghost
         const spawnGhost = () => {
-            if (this.isGameOver || this.bossState !== "HIDDEN") return;
+            if (this.isGameOver || this.bossState !== "HIDDEN" || this.isBg2Active) return;
             const x = Phaser.Math.Between(50, DESIGN_WIDTH - 50);
             const y = Phaser.Math.Between(-150, -50);
             const ghost = this.ghosts.create(x, y, 'ghost') as Phaser.Physics.Arcade.Sprite;
@@ -549,12 +567,14 @@ export class PlayScene extends Phaser.Scene {
 
         // Trigger Boss Battle (Test: After 15 seconds)
         // Store the timer so we can cancel it if boss spawns early
-        this.bossSpawnTimer = this.time.delayedCall(15000, () => {
-            // Only spawn if not defeated and not already visible
-            if (!this.bossDefeated && this.bossState === "HIDDEN") {
-                this.spawnBoss();
-            }
-        });
+        if (!startAtLevel2) {
+            this.bossSpawnTimer = this.time.delayedCall(15000, () => {
+                // Only spawn if not defeated and not already visible
+                if (!this.bossDefeated && this.bossState === "HIDDEN") {
+                    this.spawnBoss();
+                }
+            });
+        }
 
         // UI: Health
         // this.healthText = this.add.text(20, 20, "HP: 10", {
@@ -657,7 +677,7 @@ export class PlayScene extends Phaser.Scene {
             stroke: "#ffffff",
             strokeThickness: 4,
             align: 'center'
-        }).setOrigin(0.5).setDepth(201).setVisible(false); // Depth > Overlay (200)
+        }).setOrigin(0.5).setDepth(2001).setScrollFactor(0).setVisible(false); // Depth > Overlay (2000)
 
         // UI: Restart
         this.restartButton = this.add.text(DESIGN_WIDTH / 2, DESIGN_HEIGHT / 2 + 50, "RESTART", {
@@ -668,14 +688,15 @@ export class PlayScene extends Phaser.Scene {
             padding: { x: 10, y: 5 },
             align: 'center'
         })
-            .setOrigin(0.5).setDepth(201).setVisible(false) // Depth > Overlay (200)
+            .setOrigin(0.5).setDepth(2001).setScrollFactor(0).setVisible(false) // Depth > Overlay (2000)
             .setInteractive({ useHandCursor: true })
-            .on('pointerdown', () => this.scene.restart());
+            .on('pointerdown', () => this.scene.restart({ startAtLevel2: this.isBg2Active }));
 
         // UI: Pause Overlay
         this.pauseOverlay = this.add.rectangle(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT, 0x000000, 0.6)
             .setOrigin(0)
-            .setDepth(200)
+            .setDepth(2000)
+            .setScrollFactor(0)
             .setVisible(false);
 
         this.pauseText = this.add.text(DESIGN_WIDTH / 2, DESIGN_HEIGHT / 2, "PAUSED", {
@@ -684,7 +705,7 @@ export class PlayScene extends Phaser.Scene {
             color: "#ffffff",
             stroke: "#000000",
             strokeThickness: 6
-        }).setOrigin(0.5).setDepth(201).setVisible(false);
+        }).setOrigin(0.5).setDepth(2001).setScrollFactor(0).setVisible(false);
 
         // Mobile Pause Button (Bottom Center - Between Joystick and Fire)
         // Joystick/Fire are approx at Y = DESIGN_HEIGHT - 75. 
@@ -721,7 +742,7 @@ export class PlayScene extends Phaser.Scene {
                 this.time.paused = false;
                 this.physics.resume();
                 this.isPaused = false;
-                this.scene.restart();
+                this.scene.restart({ startAtLevel2: this.isBg2Active });
             });
 
         // Audio Setup
@@ -746,12 +767,17 @@ export class PlayScene extends Phaser.Scene {
         }
 
         if (this.isMusicPlaying) {
-            this.bgMusic.play();
-            // Pre-unlock bgMusic2 for mobile: play silently then pause
-            // This allows the crossfade to work later without user interaction
-            (this.bgMusic2 as Phaser.Sound.WebAudioSound).setVolume(0);
-            this.bgMusic2.play();
-            this.bgMusic2.pause();
+            if (startAtLevel2) {
+                this.bgMusic2.play();
+                (this.bgMusic2 as Phaser.Sound.WebAudioSound).setVolume(0.3);
+            } else {
+                this.bgMusic.play();
+                // Pre-unlock bgMusic2 for mobile: play silently then pause
+                // This allows the crossfade to work later without user interaction
+                (this.bgMusic2 as Phaser.Sound.WebAudioSound).setVolume(0);
+                this.bgMusic2.play();
+                this.bgMusic2.pause();
+            }
         }
 
         // Cleanup on Shutdown (Ensures old tracks stop so new one starts fresh)
@@ -896,6 +922,14 @@ export class PlayScene extends Phaser.Scene {
         };
         layout();
         this.input.keyboard?.on("keydown-ESC", () => this.scene.start("Menu"));
+
+        // Debug: 'T' for Transition
+        this.input.keyboard?.on("keydown-T", () => {
+            console.log("Debug: Triggering Transition");
+            this.startLevelTransition();
+        });
+
+        console.log("PlayScene: Create completed");
 
         // Initialize Mobile Controls
         this.input.addPointer(2); // Enable multi-touch
